@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    username: root
+    password: AllMightBoGdaN2003
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: create
+    show-sql: true
+
+indexing-settings:
+  sites:
+    - url: http://www.playback.ru
+      name: PlayBack.Ru
+    - url: https://skillbox.ru/
+      name: Skillbox
+    - url: https://dimonvideo.ru/
+      name: dimonvideo
+    - url: https://ipfran.ru
+      name: pfran.ru
+    - url: https://et-cetera.ru
+      name: et-cetera.ru
+
+account-settings:
+  userAgent: ParSearchBot
+  referrer: http://www.google.com
