@@ -92,22 +92,24 @@ public class IndexationServiceComponents {
         String content = document.html();
         int statusCode = response.statusCode();
 
+        String finalUrlVersion = editUrl(url);
         PageEntity pageEntity = new PageEntity();
-        pageEntity.setPath(url);
+        pageEntity.setPath(finalUrlVersion);
         pageEntity.setCode(statusCode);
         pageEntity.setContent(content);
         pageEntity.setSite(siteUrl);
         pageRepository.saveAndFlush(pageEntity);
-        lemmaConverter.getFilterPageContent(pageRepository.getContentByPath(url), pageEntity);
+        lemmaConverter.getFilterPageContent(pageRepository.getContentByPath(pageEntity.getPath()), pageEntity);
         return true;
     }
 
-    public void deletePageData(String path) {
-        if (pageRepository.existsByPath(path)) {
-            PageEntity pageEntity = pageRepository.findByPath(path);
-            List<Integer> indexIds = indexRepository.findIndexesByPageId(pageEntity);
-            String content = pageRepository.getContentByPath(path).replaceAll("<(.*?)+>", "").trim();
+    public void deletePageData(String url) {
+        String finalUrlVersion = editUrl(url);
+        if (pageRepository.existsByPath(finalUrlVersion)) {
+            PageEntity pageEntity = pageRepository.findByPath(finalUrlVersion);
 
+            List<Integer> indexIds = indexRepository.findIndexesByPageId(pageEntity);
+            String content = pageRepository.getContentByPath(finalUrlVersion).replaceAll("<(.*?)+>", "").trim();
             for (int indexId : indexIds) {
                 indexRepository.deleteById(indexId);
             }
@@ -117,6 +119,25 @@ public class IndexationServiceComponents {
                 pageRepository.delete(pageEntity);
             }
         }
+    }
+
+    private String editUrl(String url) {
+        String editedUrl = editSiteUrl(url);
+        String siteUrl = sites.getSites().stream().filter(site -> {
+            String editedSiteUrl = editSiteUrl(site.getUrl());
+            return editedUrl.contains(editedSiteUrl);
+        }).findFirst().get().getUrl();
+        String finalSite = siteUrl;
+        StringBuilder editedSite = new StringBuilder(finalSite);
+        if (siteUrl.endsWith("/")) {
+            finalSite = editedSite.deleteCharAt(siteUrl.length() - 1).toString();
+        }
+
+        if (siteUrl.contains("www.")) {
+            finalSite = editedSite.toString().replaceFirst("w{3}\\.", "");
+        }
+
+        return editedUrl.replace(finalSite, "");
     }
 }
 

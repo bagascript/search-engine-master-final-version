@@ -92,7 +92,8 @@ public class IndexationServiceImpl implements IndexationService {
                 Document document;
                 try {
                     Thread.sleep(500);
-                    response = Jsoup.connect(url).execute();
+                    response = Jsoup.connect(url).userAgent("ParSearchBot")
+                            .referrer("http://www.google.com").execute();
                     document = response.parse();
                 } catch (IOException | InterruptedException e) {
                     throw new RuntimeException(e);
@@ -138,7 +139,8 @@ public class IndexationServiceImpl implements IndexationService {
     private boolean isUrlStartingWithSite(String url) {
         return sites.getSites().stream().anyMatch(site -> {
             String editedSiteUrl = indexationServiceComponents.editSiteUrl(site.getUrl());
-            return url.startsWith(editedSiteUrl);
+            String editedUrl = indexationServiceComponents.editSiteUrl(url);
+            return editedUrl.startsWith(editedSiteUrl);
         });
     }
 }

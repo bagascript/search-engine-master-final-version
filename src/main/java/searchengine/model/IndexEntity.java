@@ -18,11 +18,11 @@ public class IndexEntity implements Serializable
     @Column(name = "id")
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lemma_id", referencedColumnName = "id", nullable = false)
     private LemmaEntity lemma;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "page_id", referencedColumnName = "id", nullable = false)
     private PageEntity page;
 

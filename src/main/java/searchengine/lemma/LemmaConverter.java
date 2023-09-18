@@ -39,6 +39,7 @@ public class LemmaConverter {
     private void filterPageContent(String content, PageEntity pageEntity) {
         String finalContentVersion = content.replaceAll("<(.*?)+>", "").trim();
 
+        System.out.println();
         if (!finalContentVersion.isEmpty()) {
             convertContentToLemmas(finalContentVersion, pageEntity);
         }
@@ -47,7 +48,6 @@ public class LemmaConverter {
     private void deleteLemmas(String content, PageEntity pageEntity) {
         Set<String> uniqueLemmas = new HashSet<>();
         String[] words = splitContentIntoWords(content);
-
         for (String word : words) {
             List<String> wordBaseForms = returnWordIntoBaseForm(word);
             if (!wordBaseForms.isEmpty()) {
@@ -61,7 +61,11 @@ public class LemmaConverter {
 
     private void searchAndDeleteLemmas(String resultWordForm, PageEntity pageEntity, Set<String> uniqueLemmas) {
         SiteEntity site = pageEntity.getSite();
-        if (lemmaRepository.getFrequencyByLemmaAndSiteId(resultWordForm, site) > 1
+        if(lemmaRepository.getFrequencyByLemmaAndSite(resultWordForm, site.getId()) == 0) {
+            lemmaRepository.deleteByLemmaAndSiteId(resultWordForm, site.getId());
+        }
+
+        if (lemmaRepository.getLemmaEntity(resultWordForm, site).getFrequency() > 1
                 && !uniqueLemmas.contains(resultWordForm)) {
             HashMap<Integer, Integer> siteAndFrequencyMap = new HashMap<>();
             LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, site);
@@ -96,7 +100,7 @@ public class LemmaConverter {
                 } else if (!uniqueLemmas.contains(resultWordForm)) {
                     LemmaEntity lemmaEntity = getNewLemma(resultWordForm, pageEntity);
                     lemmaRepository.saveAndFlush(lemmaEntity);
-                    log.info("Новая лемма '" + lemmaEntity.getLemma() + "' страницы #" + pageEntity.getId() + " была добавлена");
+                    log.info("Новая лемма '" + lemmaEntity.getLemma() +  "' была добавлена");
                     indexLemma(pageEntity, lemmaEntity);
                     uniqueLemmas.add(resultWordForm);
                 }
@@ -117,8 +121,6 @@ public class LemmaConverter {
                 lemmaRepository.updateFrequency(lemmaEntity.getId(),
                         lemmaEntity.getFrequency() + 1);
             }
-
-            log.info("Лемма '" + lemmaEntity.getLemma() + " была обновлена - кол-во: " + lemmaRepository.getLemmaEntity(resultWordForm, site).getFrequency());
             uniqueLemmas.add(resultWordForm);
         }
     }
@@ -128,7 +130,6 @@ public class LemmaConverter {
         lemmaEntity.setLemma(resultWordForm);
         lemmaEntity.setFrequency(1);
         lemmaEntity.setSite(pageEntity.getSite());
-        log.info("Новая лемма '" + lemmaEntity.getLemma() + "' страницы #" + pageEntity.getId() + " была добавлена");
         return lemmaEntity;
     }
 
@@ -226,6 +227,19 @@ public class LemmaConverter {
         return result;
     }
 
+    private String editSiteURL(String siteURL) {
+        StringBuilder editedSite = new StringBuilder(siteURL);
+        String finalSiteURlVersion = editedSite.toString();
+        if (siteURL.endsWith("/")) {
+            finalSiteURlVersion = editedSite.deleteCharAt(siteURL.length() - 1).toString();
+        }
+
+        if (siteURL.contains("www.")) {
+            finalSiteURlVersion = editedSite.toString().replaceFirst("w{3}\\.", "");
+        }
+        return finalSiteURlVersion;
+    }
+
     public void getFilterPageContent(String content, PageEntity pageEntity) {
         filterPageContent(content, pageEntity);
     }
@@ -240,5 +254,9 @@ public class LemmaConverter {
 
     public List<String> getReturnWordIntoBaseForm(String word) {
         return returnWordIntoBaseForm(word);
+    }
+
+    public String getEditSiteURL(String siteURL) {
+        return editSiteURL(siteURL);
     }
 }

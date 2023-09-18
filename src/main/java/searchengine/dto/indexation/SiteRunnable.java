@@ -7,6 +7,7 @@ import searchengine.model.SiteEntity;
 import searchengine.model.enums.StatusType;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
@@ -26,9 +27,10 @@ public class SiteRunnable implements Runnable {
     @Override
     public void run() {
         String siteUrl = indexationServiceComponents.editSiteUrl(siteEntity.getUrl());
-        LinkFinder linkFinder = new LinkFinder(siteEntity, siteUrl, siteRepository, pageRepository, lemmaConverter);
+        LinkFinder linkFinder = new LinkFinder(siteEntity, siteUrl.concat("/"), siteRepository, pageRepository, lemmaConverter);
         ForkJoinPool forkJoinPool = new ForkJoinPool();
         ConcurrentHashMap<String, SiteEntity> links = forkJoinPool.invoke(linkFinder);
+
 
         if (isIndexationRunning) {
             synchronized (MONITOR) {
@@ -42,7 +44,8 @@ public class SiteRunnable implements Runnable {
     private void updateSiteStatusOnIndexed(ConcurrentHashMap<String, SiteEntity> links) {
         for (Map.Entry<String, SiteEntity> link : links.entrySet()) {
             SiteEntity site = link.getValue();
-            if (!pageRepository.getLastUrlBySiteId(site).equals(link.getKey())) {
+            String finalSite = lemmaConverter.getEditSiteURL(site.getUrl());
+            if (!pageRepository.getLastUrlBySiteId(site).equals(link.getKey().replace(finalSite, ""))) {
                 continue;
             }
             siteRepository.updateOnIndexed(site.getId(), StatusType.INDEXED);
