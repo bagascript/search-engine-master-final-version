@@ -11,6 +11,7 @@ import searchengine.dto.response.ApiResponse;
 
 import searchengine.services.indexation.IndexationService;
 import searchengine.services.search.SearchService;
+import searchengine.services.search.SearchServiceImpl;
 import searchengine.services.statistics.StatisticsService;
 
 @RestController

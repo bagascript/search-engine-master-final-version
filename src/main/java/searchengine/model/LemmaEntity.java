@@ -4,7 +4,8 @@ import lombok.*;
 
 import javax.persistence.*;
 import java.io.Serializable;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -18,14 +19,14 @@ public class LemmaEntity implements Serializable {
     @Column(name = "id")
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "site_id", referencedColumnName = "id", nullable = false)
     private SiteEntity site;
 
     @OneToMany(mappedBy = "lemma", cascade = CascadeType.ALL)
-    private Set<IndexEntity> indexEntities;
+    private List<IndexEntity> indexEntities  = new ArrayList<>();
 
-    @Column(columnDefinition = "VARCHAR(255) NOT NULL")
+    @Column(name = "lemma_word", columnDefinition = "VARCHAR(255)", nullable = false)
     private String lemma;
 
     @Column(nullable = false)

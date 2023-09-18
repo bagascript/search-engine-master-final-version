@@ -25,9 +25,7 @@ import static searchengine.services.indexation.IndexationServiceImpl.isIndexatio
 @RequiredArgsConstructor
 public class LinkFinder extends RecursiveTask<ConcurrentHashMap<String, SiteEntity>> {
     public static final ConcurrentHashMap<String, Integer> uniqueUrlContainer = new ConcurrentHashMap<>();
-
     private final SiteEntity siteEntity;
-
     private final String url;
 
     @Autowired
@@ -43,21 +41,17 @@ public class LinkFinder extends RecursiveTask<ConcurrentHashMap<String, SiteEnti
         ConcurrentHashMap<LinkFinder, SiteEntity> tasks = new ConcurrentHashMap<>();
         links.put(url, siteEntity);
 
-        Document document;
-        Elements elements;
         try {
-            Thread.sleep(500);
-            Connection.Response response = Jsoup.connect(url).execute();
-            document = response.parse();
-            elements = document.select("a");
+            Thread.sleep(300);
+            Document document = Jsoup.connect(url).userAgent("ParSearchBot").referrer("http://www.google.com").get();
+            String content = document.html();
+            int statusCode = document.connection().response().statusCode();
+            saveLinkComponentsIntoDB(url, content, statusCode);
+            Elements elements = document.select("a");
             elements.forEach(el -> {
                 String link = el.attr("abs:href");
                 boolean isLinkCorrect = link.startsWith(url) && !uniqueUrlContainer.containsKey(link) && !link.contains("#") && !link.contains("?");
                 if (isLinkCorrect) {
-                    String content = el.html();
-                    int statusCode = response.statusCode();
-                    saveLinkComponentsIntoDB(link, content, statusCode);
-
                     LinkFinder linkFinderTask = new LinkFinder(siteEntity, link, siteRepository, pageRepository, lemmaConverter);
                     linkFinderTask.fork();
                     tasks.put(linkFinderTask, siteEntity);
@@ -77,18 +71,20 @@ public class LinkFinder extends RecursiveTask<ConcurrentHashMap<String, SiteEnti
 
     private void saveLinkComponentsIntoDB(String link, String content, int statusCode) {
         SiteEntity site = siteRepository.findByUrl(siteEntity.getUrl());
+        String finalSite = lemmaConverter.getEditSiteURL(site.getUrl());
 
         PageEntity pageEntity = new PageEntity();
         pageEntity.setSite(site);
-        pageEntity.setPath(link);
+        pageEntity.setPath(link.replace(finalSite, ""));
         pageEntity.setContent(content);
         pageEntity.setCode(statusCode);
         synchronized (MONITOR) {
             if (isIndexationRunning) {
                 if (!pageRepository.existsByPath(pageEntity.getPath())) {
                     pageRepository.saveAndFlush(pageEntity);
-                    siteRepository.updateStatusTime(siteEntity.getId());
                     lemmaConverter.getFilterPageContent(pageEntity.getContent(), pageEntity);
+                    siteRepository.updateStatusTime(siteEntity.getId());
+                    log.info("Сайт : " + pageEntity.getSite().getName());
                 }
             }
         }

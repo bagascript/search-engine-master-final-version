@@ -13,16 +13,14 @@ import javax.transaction.Transactional;
 @Repository
 public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer>
 {
+    @Transactional
+    boolean existsByLemma(String lemma);
 
     @Transactional
     boolean existsByLemmaAndSiteId(String lemma, int siteId);
 
     @Transactional
     void deleteByLemmaAndSiteId(String lemma, int siteId);
-
-    @Transactional
-    @Query("SELECT l.frequency FROM LemmaEntity l WHERE l.lemma = :lemma AND l.site = :site")
-    int getFrequencyByLemmaAndSiteId(@Param("lemma") String lemma, @Param("site") SiteEntity site);
 
     @Transactional
     @Query(value = "SELECT l FROM LemmaEntity l WHERE l.lemma = :lemma AND l.site = :site")
@@ -32,6 +30,11 @@ public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer>
     @Transactional
     @Query("UPDATE LemmaEntity l SET l.frequency = :frequency WHERE l.id = :id")
     void updateFrequency(@Param("id") int id, int frequency);
+
+    @Transactional
+    @Query(value = "SELECT l.frequency FROM search_engine.lemma l " +
+            "WHERE l.lemma_word = :lemma_word AND l.site_id = :site_id", nativeQuery = true)
+    int getFrequencyByLemmaAndSite(@Param("lemma_word") String lemmaWord, @Param("site_id") int siteId);
 
     @Transactional
     @Query(value = "SELECT COUNT(*) FROM search_engine.lemma l WHERE l.site_id = :site_id", nativeQuery = true)

@@ -11,7 +11,6 @@ import searchengine.config.SitesList;
 import searchengine.dto.response.ApiResponse;
 import searchengine.dto.search.DataProperties;
 import searchengine.dto.search.Link;
-import searchengine.lemma.Lemma;
 import searchengine.lemma.LemmaConverter;
 import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
@@ -60,35 +59,7 @@ public class SearchServiceImpl implements SearchService {
         } else if (query.isEmpty()) {
             apiResponse = new ApiResponse(false, EMPTY_QUERY_ERROR_TEXT);
         } else {
-            apiResponse = getFoundResultsResponse(query, site, siteEntity);
-        }
-        return apiResponse;
-    }
-
-    private ApiResponse getFoundResultsResponse(String query, String site, SiteEntity siteEntity) {
-        ApiResponse apiResponse;
-        List<DataProperties> dataPropertiesList;
-        String[] words = lemmaConverter.getSplitContentIntoWords(query);
-        Set<String> result = editQueryWords(words, siteEntity);
-        if (result.isEmpty()) {
-            dataPropertiesList = new ArrayList<>();
-            apiResponse = new ApiResponse(true, 0, dataPropertiesList);
-        } else {
-            Set<Lemma> lemmas = getLemmasSet(result, site);
-            String firstLemma = lemmas.stream().findFirst().get().getLemma();
-            int lemmaId = lemmaRepository.getLemmaEntity(firstLemma, siteEntity).getId();
-            List<IndexEntity> indexes = indexRepository.findAllByLemmaId(lemmaId);
-            Set<PageEntity> pageEntities = getPages(indexes, lemmas, siteEntity);
-            if (pageEntities.isEmpty()) {
-                dataPropertiesList = new ArrayList<>();
-                apiResponse = new ApiResponse(true, 0, dataPropertiesList);
-            } else {
-                dataPropertiesList = saveDataIntoList(pageEntities, siteEntity, lemmas, query);
-                apiResponse = new ApiResponse(true, dataPropertiesList.size(),
-                        dataPropertiesList.stream()
-                                .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
-                                .collect(Collectors.toList()));
-            }
+            apiResponse = getFoundResultsResponse(query, siteEntity);
         }
         return apiResponse;
     }
@@ -107,11 +78,11 @@ public class SearchServiceImpl implements SearchService {
             totalError.add(apiResponse.getError());
         }
 
-        if(apiResponseList.stream().anyMatch(s -> !s.isResult())) {
+        if (apiResponseList.stream().anyMatch(s -> !s.isResult())) {
             totalApiResponse = sendNegativeResponse(totalError);
         } else {
             for (ApiResponse apiResponse : apiResponseList) {
-                if(apiResponse.getData().isEmpty()) {
+                if (apiResponse.getData().isEmpty()) {
                     continue;
                 }
                 totalCount += apiResponse.getCount();
@@ -123,17 +94,48 @@ public class SearchServiceImpl implements SearchService {
         return totalApiResponse;
     }
 
+    private ApiResponse getFoundResultsResponse(String query, SiteEntity siteEntity) {
+        long start = System.currentTimeMillis();
+        ApiResponse apiResponse;
+        List<DataProperties> dataPropertiesList;
+        String[] words = lemmaConverter.getSplitContentIntoWords(query);
+        Set<LemmaEntity> resultWordsSet = editQueryWords(words, siteEntity);
+        if (resultWordsSet.isEmpty()) {
+            dataPropertiesList = new ArrayList<>();
+            apiResponse = new ApiResponse(true, 0, dataPropertiesList);
+        } else {
+            Set<LemmaEntity> lemmas = getLemmasSet(resultWordsSet);
+            String firstLemma = lemmas.stream().findFirst().get().getLemma();
+            int lemmaId = lemmaRepository.getLemmaEntity(firstLemma, siteEntity).getId();
+            List<IndexEntity> indexes = indexRepository.findAllByLemmaId(lemmaId);
+            Set<PageEntity> pageEntities = getPages(indexes, lemmas.stream().skip(1).collect(Collectors.toSet()), siteEntity);
+            var debug3 = (double) (System.currentTimeMillis() - start);
+            System.out.println();
+            if (pageEntities.isEmpty()) {
+                dataPropertiesList = new ArrayList<>();
+                apiResponse = new ApiResponse(true, 0, dataPropertiesList);
+            } else {
+                dataPropertiesList = saveDataIntoList(pageEntities, lemmas, query);
+                apiResponse = new ApiResponse(true, dataPropertiesList.size(),
+                        dataPropertiesList.stream()
+                                .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
+                                .collect(Collectors.toList()));
+            }
+        }
+        return apiResponse;
+    }
+
     private ApiResponse sendNegativeResponse(List<String> totalError) {
         ApiResponse totalApiResponse;
         if (totalError.contains(SITE_IS_NOT_INDEXED_ERROR_TEXT)) {
             totalApiResponse = new ApiResponse(false, SITE_IS_NOT_INDEXED_ERROR_TEXT);
-        } else  {
+        } else {
             totalApiResponse = new ApiResponse(false, EMPTY_QUERY_ERROR_TEXT);
         }
         return totalApiResponse;
     }
 
-    private ApiResponse sendPositiveResponse(int totalCount , List<DataProperties> totalDataProperties) {
+    private ApiResponse sendPositiveResponse(int totalCount, List<DataProperties> totalDataProperties) {
         ApiResponse totalApiResponse;
         if (totalCount == 0 && totalDataProperties.isEmpty()) {
             totalApiResponse = new ApiResponse(true, 0, totalDataProperties);
@@ -146,173 +148,160 @@ public class SearchServiceImpl implements SearchService {
         return totalApiResponse;
     }
 
-    private Set<String> editQueryWords(String[] words, SiteEntity siteEntity) {
-        Set<String> lemmaSet = new HashSet<>();
+    //TODO: Подлежит оптимизации!!!
+    private Set<LemmaEntity> editQueryWords(String[] words, SiteEntity siteEntity) {
+        Set<LemmaEntity> lemmaSet = new HashSet<>();
+        Set<String> resultWordFormSet = new HashSet<>();
         for (String word : words) {
             List<String> wordBaseForms = lemmaConverter.getReturnWordIntoBaseForm(word);
             if (!wordBaseForms.isEmpty()) {
                 String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
-                lemmaSet.add(resultWordForm);
+                resultWordFormSet.add(resultWordForm);
             }
         }
-
-        return lemmaSet.stream().filter(l -> lemmaRepository.existsByLemmaAndSiteId(l, siteEntity.getId())).collect(Collectors.toSet());
-    }
-
-    private Set<Lemma> getLemmasSet(Set<String> words, String site) {
-        Set<Lemma> lemmaSet = new HashSet<>();
-
-        SiteEntity siteEntity = siteRepository.findByUrl(site);
-        List<PageEntity> pages = pageRepository.findAllBySiteId(siteEntity.getId());
-        for (String word : words) {
-            int lemmaFrequency = lemmaRepository.getFrequencyByLemmaAndSiteId(word, siteEntity);
-            Lemma lemma = getLemmaByCheckingOnFactor(word, lemmaFrequency, pages);
-            if (!lemma.getLemma().isEmpty()) {
-                lemmaSet.add(lemma);
+        for(String word : resultWordFormSet) {
+            if(!lemmaRepository.existsByLemmaAndSiteId(word, siteEntity.getId())) {
+                return new HashSet<>();
+            } else {
+                lemmaSet.addAll(getLemmaByCheckingOnFactor(word, siteEntity));
             }
         }
-
-        return lemmaSet.stream().sorted(Comparator.comparing(Lemma::getFrequency))
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return lemmaSet;
     }
 
-    private Lemma getLemmaByCheckingOnFactor(String resultWordForm, int lemmaFrequency, List<PageEntity> pages) {
-        Lemma lemma = new Lemma();
-        int pageFactor = (lemmaFrequency * 100) / pages.size();
+    private Set<LemmaEntity> getLemmasSet(Set<LemmaEntity> lemmaSet) {
+        return lemmaSet.stream().sorted(Comparator.comparing(LemmaEntity::getFrequency)).collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Set<LemmaEntity> getLemmaByCheckingOnFactor(String resultWordForm, SiteEntity siteEntity) {
+        Set<LemmaEntity> lemmaSet = new HashSet<>();
+        int sitePagesNumber = pageRepository.countAllPagesBySiteId(siteEntity);
+        LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, siteEntity);
+        int pageFactor = (lemmaEntity.getFrequency() * 100) / sitePagesNumber;
 
         if (pageFactor < 80) {
-            lemma.setLemma(resultWordForm);
-            lemma.setFrequency(lemmaFrequency);
+            lemmaSet.add(lemmaEntity);
         }
-
-        return lemma;
+        return lemmaSet;
     }
 
-    private Set<PageEntity> getPages(List<IndexEntity> indexes, Set<Lemma> lemmas, SiteEntity siteEntity) {
+    private Set<PageEntity> getPages(List<IndexEntity> indexes, Set<LemmaEntity> lemmas, SiteEntity siteEntity) {
         Set<PageEntity> pageEntities = new HashSet<>();
         for (IndexEntity indexEntity : indexes) {
-            Optional<PageEntity> pageEntity = pageRepository.findById(indexEntity.getPage().getId());
-            pageEntities.add(pageEntity.get());
+            int pageId = indexEntity.getPage().getId();
+            PageEntity pageEntity = pageRepository.findById(pageId);
+            pageEntities.add(pageEntity);
         }
-        for (Lemma lemma : lemmas.stream().skip(1).collect(Collectors.toSet())) {
-            LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(lemma.getLemma(), siteEntity);
+        for (LemmaEntity lemmaEntity : lemmas) {
             pageEntities.removeIf(pageEntity -> !indexRepository.existsByPageIdAndLemmaId(pageEntity.getId(),
                     lemmaEntity.getId()));
         }
         return pageEntities;
     }
 
-    private List<DataProperties> saveDataIntoList(Set<PageEntity> pageEntities, SiteEntity siteEntity,
-                                                  Set<Lemma> lemmas, String query) {
+    private List<DataProperties> saveDataIntoList(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas, String query) {
         List<DataProperties> dataPropertiesList = new ArrayList<>();
         float maxAbsoluteRelevance = getMaxPageRelevance(pageEntities, lemmas);
         for (PageEntity pageEntity : pageEntities) {
             DataProperties dataProperties = new DataProperties();
-            Link link = editSiteAndUri(siteEntity.getUrl(), pageEntity.getPath());
+            long start = System.currentTimeMillis();
+            Link link = editPageProperties(pageEntity.getSite().getUrl(), pageEntity.getPath(), pageEntity.getContent());
+            var debug4 = (double) (System.currentTimeMillis() - start);
+            System.out.println();
+            dataProperties.setSiteName(pageEntity.getSite().getName());
             dataProperties.setSite(link.getSite());
-            dataProperties.setSiteName(siteEntity.getName());
             dataProperties.setUri(link.getUri());
-            dataProperties.setTitle(getPageTitle(pageEntity.getPath()));
-            dataProperties.setSnippet(getSnippetFromPageContent(pageEntity, lemmas, query));
-            dataProperties.setRelevance(calculatePageRelevance(pageEntity, maxAbsoluteRelevance, lemmas, siteEntity));
+            dataProperties.setTitle(link.getTitle());
+            dataProperties.setRelevance(calculatePageRelevance(pageEntity, maxAbsoluteRelevance, lemmas));
+            dataProperties.setSnippet(getSnippetFromPageContent(query, link.getContent()));
+            if (dataProperties.getSnippet().length() < 4) {
+                continue;
+            }
             dataPropertiesList.add(dataProperties);
         }
 
         return dataPropertiesList;
     }
 
-    private Link editSiteAndUri(String site, String uri) {
-        Link link = new Link();
-        StringBuilder editedSite = new StringBuilder(site);
-        String finalSite = editedSite.toString();
-        if (site.endsWith("/")) {
-            finalSite = editedSite.deleteCharAt(site.length() - 1).toString();
-        }
+    private String getSnippetFromPageContent(String query, String content) {
+        StringBuilder finaSnippetVersion = new StringBuilder();
 
-        if (site.contains("www.")) {
-            finalSite = editedSite.toString().replaceFirst("w{3}\\.", "");
+        String editedContent = content.toLowerCase();
+        String [] words = query.toLowerCase().split("\\s+");
+        for(String word : words) {
+            Pattern pattern = Pattern.compile("\\b.{0,75}" + word + ".{0,200}\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Matcher matcher = pattern.matcher(editedContent);
+            if(!finaSnippetVersion.toString().contains(word)) {
+                while (matcher.find()) {
+                    String fragmentText = content.toLowerCase().substring(matcher.start(), matcher.end());
+                    String text = "..." + fragmentText;
+                    text = Pattern.compile(word, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).
+                            matcher(text).replaceAll("<b>" + word + "</b>");
+                    finaSnippetVersion.append(text);
+                }
+            } else {
+                finaSnippetVersion = new StringBuilder(finaSnippetVersion.toString().replaceAll(word, "<b>" + word + "</b>"));
+            }
         }
-
-        String finalUri = uri.replace(finalSite, "");
-        link.setSite(finalSite);
-        link.setUri(finalUri);
-        return link;
+        return checkOnSnippetLength(finaSnippetVersion.toString(), words);
     }
 
-    private String getPageTitle(String page) {
+
+    private String checkOnSnippetLength(String snippet, String [] words) {
+        String editedSnippet = snippet;
+        if (words.length > 1) {
+            String firstWord = Arrays.stream(words).findFirst().get();
+            int i = editedSnippet.indexOf(firstWord);
+            String content = editedSnippet.substring(0, i + firstWord.length() + 4);
+            for(String word : Arrays.stream(words).skip(1).collect(Collectors.toSet())) {
+                content = content.concat("..." + editedSnippet.substring(editedSnippet.indexOf(word) - 3));
+            }
+            editedSnippet = content;
+        }
+
+        if(editedSnippet.length() > 280) {
+            editedSnippet = editedSnippet.replaceAll(Pattern.quote(editedSnippet.substring(279)), "");
+        }
+
+        return editedSnippet.concat("...");
+    }
+
+    private Link editPageProperties(String siteURL, String uri, String content) {
+        String finalSiteURLVersion = lemmaConverter.getEditSiteURL(siteURL);
+        return getFixedPageProperties(finalSiteURLVersion, uri, content);
+    }
+
+    //TODO: Подлежит оптимизации!!!
+    private Link getFixedPageProperties(String siteURL, String uri, String pageContent) {
+        Link link = new Link();
+        String url = siteURL.concat(uri);
         String title;
+        String content;
         try {
             Thread.sleep(100);
-            Document doc = Jsoup.connect(page)
+            Document doc = Jsoup.connect(url)
+                    .userAgent("ParSearchBot")
+                    .referrer("http://www.google.com")
                     .ignoreContentType(true)
                     .execute().parse();
             title = doc.title();
+            content = Jsoup.parse(pageContent).text();
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
         }
-        return title;
+        link.setSite(siteURL);
+        link.setUri(uri);
+        link.setTitle(title);
+        link.setContent(content);
+        return link;
     }
 
-    private String getSnippetFromPageContent(PageEntity pageEntity, Set<Lemma> lemmas, String query) {
-        StringBuilder snippet = new StringBuilder();
-
-        if (pageEntity.getContent().equals(query)) {
-            snippet.append("<b>").append(pageEntity.getContent()).append("</b>");
-        } else {
-            for (Lemma lemma : lemmas) {
-                String content = pageEntity.getContent().replaceAll("<(.*?)+>", "").trim();
-                snippet = getAndEditContent(lemma, snippet, content);
-            }
-        }
-        return checkOnSnippetLength(snippet.toString());
+    private float calculatePageRelevance(PageEntity pageEntity, float maxAbsoluteRelevance, Set<LemmaEntity> lemmas) {
+        float rank = getRankSumForPage(lemmas, pageEntity);
+        return rank / maxAbsoluteRelevance;
     }
 
-    private StringBuilder getAndEditContent(Lemma lemma, StringBuilder snippet, String content) {
-        String[] words = lemmaConverter.getSplitContentIntoWords(content);
-        for (String word : words) {
-            List<String> wordBaseForms = lemmaConverter.getReturnWordIntoBaseForm(word);
-            if (!wordBaseForms.isEmpty()) {
-                String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
-                if (lemma.getLemma().equals(resultWordForm)) {
-                    snippet = convertContentIntoSnippet(word, content, snippet);
-                    break;
-                }
-            }
-        }
-
-        return snippet;
-    }
-
-    private StringBuilder convertContentIntoSnippet(String word, String content, StringBuilder snippet) {
-        if (!snippet.toString().contains(word)) {
-            Pattern pattern = Pattern.compile("\\b.{0,50}" + word + ".{0,50}\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-            Matcher matcher = pattern.matcher(content.toLowerCase());
-            while (matcher.find()) {
-                String fragmentText = content.toLowerCase().substring(matcher.start(), matcher.end());
-                String text = "..." + fragmentText + "... ";
-                text = Pattern.compile(word, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).
-                        matcher(text).replaceAll("<b>" + word + "</b>");
-                snippet.append(text);
-            }
-        } else {
-            snippet = new StringBuilder(snippet.toString().replaceAll(word,
-                    "<b>" + word + "</b>"));
-        }
-
-        return snippet;
-    }
-
-    private String checkOnSnippetLength(String snippet) {
-        if (snippet.length() > 300) {
-            String snippetOnRemove = snippet.substring(299);
-            snippet = snippet.replaceAll(Pattern.quote(snippetOnRemove), "") + " ...";
-            return snippet;
-        }
-        return snippet;
-    }
-
-    private float getMaxPageRelevance(Set<PageEntity> pageEntities, Set<Lemma> lemmas) {
+    private float getMaxPageRelevance(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas) {
         float max = 0;
 
         for (PageEntity pageEntity : pageEntities) {
@@ -321,29 +310,15 @@ public class SearchServiceImpl implements SearchService {
                 max = totalRank;
             }
         }
-
         return max;
     }
 
-    private float getRankSumForPage(Set<Lemma> lemmas, PageEntity pageEntity) {
+    private float getRankSumForPage(Set<LemmaEntity> lemmas, PageEntity pageEntity) {
         float rank = 0;
-        for (Lemma lemma : lemmas) {
-            LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(lemma.getLemma(), pageEntity.getSite());
+        for (LemmaEntity lemmaEntity : lemmas) {
             IndexEntity indexEntity = indexRepository.findByLemmaIdAndPageId(lemmaEntity.getId(), pageEntity.getId());
             rank += indexEntity.getRank();
         }
-
         return rank;
-    }
-
-    private float calculatePageRelevance(PageEntity pageEntity, float maxAbsoluteRelevance,
-                                         Set<Lemma> lemmas, SiteEntity siteEntity) {
-        float rank = 0;
-        for (Lemma lemma : lemmas) {
-            LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(lemma.getLemma(), siteEntity);
-            IndexEntity indexEntity = indexRepository.findByLemmaIdAndPageId(lemmaEntity.getId(), pageEntity.getId());
-            rank += indexEntity.getRank();
-        }
-        return rank / maxAbsoluteRelevance;
     }
 }

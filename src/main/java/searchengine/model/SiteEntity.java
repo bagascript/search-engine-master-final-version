@@ -21,11 +21,11 @@ public class SiteEntity implements Serializable
     @Column(name = "id")
     private Integer id;
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private Set<PageEntity> pageEntities;
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "site", cascade = CascadeType.ALL)
+    private List<PageEntity> pageEntities = new ArrayList<>();
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private Set<LemmaEntity> lemmaEntities;
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "site", cascade = CascadeType.ALL)
+    private List<LemmaEntity> lemmaEntities = new ArrayList<>();
 
     @Column(name = "status", nullable = false, columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED')")
     @Enumerated(EnumType.STRING)

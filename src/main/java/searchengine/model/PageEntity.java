@@ -4,12 +4,13 @@ import lombok.*;
 
 import javax.persistence.*;
 import java.io.Serializable;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "page")
+@Table(name = "page", indexes = @Index(name = "path_index", columnList = "path"))
 @NoArgsConstructor
 @AllArgsConstructor
 public class PageEntity implements Serializable
@@ -19,19 +20,19 @@ public class PageEntity implements Serializable
     @Column(name = "id")
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "site_id", referencedColumnName = "id", nullable = false)
     private SiteEntity site;
 
     @OneToMany(mappedBy = "page", cascade = CascadeType.ALL)
-    private Set<IndexEntity> indexEntities;
+    private List<IndexEntity> indexEntities = new ArrayList<>();
 
-    @Column(name = "path", columnDefinition = "TEXT NOT NULL, Index(path(255))")
+    @Column(columnDefinition = "VARCHAR(300)", nullable = false)
     private String path;
 
     @Column(name = "code", nullable = false)
     private int code;
 
-    @Column(name = "content", columnDefinition = "MEDIUMTEXT NOT NULL")
+    @Column(name = "content", columnDefinition = "MEDIUMTEXT CHARACTER SET 'utf8mb4'", nullable = false)
     private String content;
 }
