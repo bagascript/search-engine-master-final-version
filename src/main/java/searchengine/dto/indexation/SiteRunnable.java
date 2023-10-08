@@ -44,7 +44,7 @@ public class SiteRunnable implements Runnable {
     private void updateSiteStatusOnIndexed(ConcurrentHashMap<String, SiteEntity> links) {
         for (Map.Entry<String, SiteEntity> link : links.entrySet()) {
             SiteEntity site = link.getValue();
-            String finalSite = lemmaConverter.getEditSiteURL(site.getUrl());
+            String finalSite = lemmaConverter.editSiteURL(site.getUrl());
             if (!pageRepository.getLastUrlBySiteId(site).equals(link.getKey().replace(finalSite, ""))) {
                 continue;
             }

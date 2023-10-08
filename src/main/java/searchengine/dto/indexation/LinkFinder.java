@@ -2,7 +2,6 @@ package searchengine.dto.indexation;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
@@ -71,7 +70,7 @@ public class LinkFinder extends RecursiveTask<ConcurrentHashMap<String, SiteEnti
 
     private void saveLinkComponentsIntoDB(String link, String content, int statusCode) {
         SiteEntity site = siteRepository.findByUrl(siteEntity.getUrl());
-        String finalSite = lemmaConverter.getEditSiteURL(site.getUrl());
+        String finalSite = lemmaConverter.editSiteURL(site.getUrl());
 
         PageEntity pageEntity = new PageEntity();
         pageEntity.setSite(site);
@@ -82,7 +81,7 @@ public class LinkFinder extends RecursiveTask<ConcurrentHashMap<String, SiteEnti
             if (isIndexationRunning) {
                 if (!pageRepository.existsByPath(pageEntity.getPath())) {
                     pageRepository.saveAndFlush(pageEntity);
-                    lemmaConverter.getFilterPageContent(pageEntity.getContent(), pageEntity);
+                    lemmaConverter.filterPageContent(pageEntity.getContent(), pageEntity);
                     siteRepository.updateStatusTime(siteEntity.getId());
                     log.info("Сайт : " + pageEntity.getSite().getName());
                 }

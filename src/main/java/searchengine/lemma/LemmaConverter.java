@@ -13,6 +13,7 @@ import searchengine.model.SiteEntity;
 import searchengine.repository.IndexRepository;
 import searchengine.repository.LemmaRepository;
 
+import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.util.*;
 
@@ -20,6 +21,15 @@ import java.util.*;
 @Slf4j
 @RequiredArgsConstructor
 public class LemmaConverter {
+    private RussianLuceneMorphology russianLuceneMorphology;
+    private EnglishLuceneMorphology englishLuceneMorphology;
+
+    @PostConstruct
+    public void init() throws IOException {
+        russianLuceneMorphology = new RussianLuceneMorphology();
+        englishLuceneMorphology = new EnglishLuceneMorphology();
+    }
+
     public static boolean isIndexing = false;
     private static boolean isDeleted = false;
 
@@ -35,8 +45,7 @@ public class LemmaConverter {
     @Autowired
     private final IndexRepository indexRepository;
 
-
-    private void filterPageContent(String content, PageEntity pageEntity) {
+    public void filterPageContent(String content, PageEntity pageEntity) {
         String finalContentVersion = content.replaceAll("<(.*?)+>", "").trim();
 
         System.out.println();
@@ -45,7 +54,7 @@ public class LemmaConverter {
         }
     }
 
-    private void deleteLemmas(String content, PageEntity pageEntity) {
+    public void deleteLemmas(String content, PageEntity pageEntity) {
         Set<String> uniqueLemmas = new HashSet<>();
         String[] words = splitContentIntoWords(content);
         for (String word : words) {
@@ -146,7 +155,7 @@ public class LemmaConverter {
         }
     }
 
-    public static String[] splitContentIntoWords(String content) {
+    public String[] splitContentIntoWords(String content) {
         String[] words;
 
         if (content.substring(0, 1).matches(REGEX)) {
@@ -159,27 +168,24 @@ public class LemmaConverter {
         return words;
     }
 
-    public static List<String> returnWordIntoBaseForm(String word) {
+    public List<String> returnWordIntoBaseForm(String word) {
         List<String> lemmaList = new ArrayList<>();
-        try {
-            if (checkLanguage(word).equals("Russian")) {
-                if (!word.isEmpty() && !isRusWordFunctional(word)) {
-                    List<String> baseRusForm = new RussianLuceneMorphology().getNormalForms(word);
-                    lemmaList.add(baseRusForm.get(baseRusForm.size() - 1));
-                }
-            } else if (checkLanguage(word).equals("English")) {
-                if (!word.isEmpty() && !isEngWordFunctional(word)) {
-                    List<String> baseEngForm = new EnglishLuceneMorphology().getNormalForms(word);
-                    lemmaList.add(baseEngForm.get(baseEngForm.size() - 1));
-                }
+
+        if (checkLanguage(word).equals("Russian")) {
+            if (!word.isEmpty() && !isRusWordFunctional(word)) {
+                List<String> baseRusForm = russianLuceneMorphology.getNormalForms(word);
+                lemmaList.add(baseRusForm.get(baseRusForm.size() - 1));
             }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } else if (checkLanguage(word).equals("English")) {
+            if (!word.isEmpty() && !isEngWordFunctional(word)) {
+                List<String> baseEngForm = englishLuceneMorphology.getNormalForms(word);
+                lemmaList.add(baseEngForm.get(baseEngForm.size() - 1));
+            }
         }
         return lemmaList;
     }
 
-    public static String checkLanguage(String word) {
+    private String checkLanguage(String word) {
         String russianAlphabet = "[а-яА-Я]{2,}";
         String englishAlphabet = "[a-zA-Z]{2,}";
 
@@ -192,14 +198,9 @@ public class LemmaConverter {
         }
     }
 
-    public static boolean isRusWordFunctional(String word) {
-        List<String> morphForm;
+    private boolean isRusWordFunctional(String word) {
+        List<String> morphForm = russianLuceneMorphology.getMorphInfo(word);
         boolean result = false;
-        try {
-            morphForm = new RussianLuceneMorphology().getMorphInfo(word);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
         for (String functionalType : RUS_FUNCTIONAL_TYPES) {
             if (morphForm.get(morphForm.size() - 1).contains(functionalType) || word.length() < 3) {
                 result = true;
@@ -209,14 +210,9 @@ public class LemmaConverter {
         return result;
     }
 
-    public static boolean isEngWordFunctional(String word) {
-        List<String> morphForm;
+    private boolean isEngWordFunctional(String word) {
+        List<String> morphForm = englishLuceneMorphology.getMorphInfo(word);
         boolean result = false;
-        try {
-            morphForm = new EnglishLuceneMorphology().getMorphInfo(word);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
         for (String functionalType : ENG_FUNCTIONAL_TYPES) {
             if (morphForm.get(morphForm.size() - 1).contains(functionalType) || word.length() <= 3) {
                 result = true;
@@ -226,7 +222,7 @@ public class LemmaConverter {
         return result;
     }
 
-    private String editSiteURL(String siteURL) {
+    public String editSiteURL(String siteURL) {
         StringBuilder editedSite = new StringBuilder(siteURL);
         String finalSiteURlVersion = editedSite.toString();
         if (siteURL.endsWith("/")) {
@@ -237,25 +233,5 @@ public class LemmaConverter {
             finalSiteURlVersion = editedSite.toString().replaceFirst("w{3}\\.", "");
         }
         return finalSiteURlVersion;
-    }
-
-    public void getFilterPageContent(String content, PageEntity pageEntity) {
-        filterPageContent(content, pageEntity);
-    }
-
-    public void getDeleteLemmas(String content, PageEntity pageEntity) {
-        deleteLemmas(content, pageEntity);
-    }
-
-    public String[] getSplitContentIntoWords(String query) {
-        return splitContentIntoWords(query);
-    }
-
-    public List<String> getReturnWordIntoBaseForm(String word) {
-        return returnWordIntoBaseForm(word);
-    }
-
-    public String getEditSiteURL(String siteURL) {
-        return editSiteURL(siteURL);
     }
 }

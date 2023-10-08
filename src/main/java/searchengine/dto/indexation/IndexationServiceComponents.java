@@ -10,8 +10,6 @@ import org.springframework.stereotype.Component;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.lemma.LemmaConverter;
-import searchengine.model.IndexEntity;
-import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.enums.StatusType;
@@ -50,14 +48,10 @@ public class IndexationServiceComponents {
     private final SitesList sites;
 
     public void cleanDataBeforeIndexing() {
-        List<IndexEntity> indexes = indexRepository.findAll();
-        indexRepository.deleteAll(indexes);
-        List<LemmaEntity> lemmas = lemmaRepository.findAll();
-        lemmaRepository.deleteAll(lemmas);
-        List<PageEntity> pages = pageRepository.findAll();
-        pageRepository.deleteAll(pages);
-        List<SiteEntity> sites = siteRepository.findAll();
-        siteRepository.deleteAll(sites);
+        indexRepository.deleteAllInBatch();
+        lemmaRepository.deleteAllInBatch();
+        pageRepository.deleteAllInBatch();
+        siteRepository.deleteAllInBatch();
         uniqueUrlContainer.clear();
     }
 
@@ -88,7 +82,7 @@ public class IndexationServiceComponents {
     public boolean saveAndFilterPageContent(Connection.Response response, Document document, String url) {
         SiteEntity siteUrl = siteRepository.findByUrl(sites.getSites().stream()
                 .filter(site -> url.startsWith(editSiteUrl(site.getUrl())))
-                .findFirst().get().getUrl());
+                .findFirst().orElseThrow().getUrl());
         String content = document.html();
         int statusCode = response.statusCode();
 
@@ -99,7 +93,7 @@ public class IndexationServiceComponents {
         pageEntity.setContent(content);
         pageEntity.setSite(siteUrl);
         pageRepository.saveAndFlush(pageEntity);
-        lemmaConverter.getFilterPageContent(pageRepository.getContentByPath(pageEntity.getPath()), pageEntity);
+        lemmaConverter.filterPageContent(pageRepository.getContentByPath(pageEntity.getPath()), pageEntity);
         return true;
     }
 
@@ -115,7 +109,7 @@ public class IndexationServiceComponents {
             }
 
             if (!content.isEmpty()) {
-                lemmaConverter.getDeleteLemmas(content, pageEntity);
+                lemmaConverter.deleteLemmas(content, pageEntity);
                 pageRepository.delete(pageEntity);
             }
         }
@@ -126,7 +120,7 @@ public class IndexationServiceComponents {
         String siteUrl = sites.getSites().stream().filter(site -> {
             String editedSiteUrl = editSiteUrl(site.getUrl());
             return editedUrl.contains(editedSiteUrl);
-        }).findFirst().get().getUrl();
+        }).findFirst().orElseThrow().getUrl();
         String finalSite = siteUrl;
         StringBuilder editedSite = new StringBuilder(finalSite);
         if (siteUrl.endsWith("/")) {

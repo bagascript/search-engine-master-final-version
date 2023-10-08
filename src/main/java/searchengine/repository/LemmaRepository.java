@@ -14,9 +14,6 @@ import javax.transaction.Transactional;
 public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer>
 {
     @Transactional
-    boolean existsByLemma(String lemma);
-
-    @Transactional
     boolean existsByLemmaAndSiteId(String lemma, int siteId);
 
     @Transactional

@@ -14,6 +14,8 @@ import searchengine.services.search.SearchService;
 import searchengine.services.search.SearchServiceImpl;
 import searchengine.services.statistics.StatisticsService;
 
+import java.io.IOException;
+
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -51,7 +53,7 @@ public class ApiController
     @GetMapping("/search")
     public ResponseEntity<ApiResponse> search
             (@RequestParam(name = "query", required = false, defaultValue = "") String query,
-             @RequestParam(name = "site", required = false, defaultValue = "") String site) {
+             @RequestParam(name = "site", required = false, defaultValue = "") String site) throws IOException {
         if(site.isEmpty()) {
             return ResponseEntity.ok(searchService.searchForAllSites(query));
         } else {

@@ -16,10 +16,10 @@ indexing-settings:
   sites:
     - url: http://www.playback.ru
       name: PlayBack.Ru
-    - url: https://et-cetera.ru
-      name: et-cetera.ru
-#    - url: https://dimonvideo.ru
-#      name: dimonvideo
+#    - url: https://et-cetera.ru
+#      name: et-cetera.ru
+    - url: https://dimonvideo.ru
+      name: dimonvideo
 #    - url: https://skillbox.ru
 #      name: Skillbox
 
