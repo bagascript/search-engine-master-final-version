@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 
 import java.util.List;
 
-import static searchengine.dto.indexation.LinkFinder.uniqueUrlContainer;
+
 
 
 @RequiredArgsConstructor
@@ -52,7 +52,6 @@ public class IndexationServiceComponents {
         lemmaRepository.deleteAllInBatch();
         pageRepository.deleteAllInBatch();
         siteRepository.deleteAllInBatch();
-        uniqueUrlContainer.clear();
     }
 
     public void setIndexingStatusSite(SiteEntity siteEntity, Site site) {

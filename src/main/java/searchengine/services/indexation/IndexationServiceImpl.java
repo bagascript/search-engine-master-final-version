@@ -15,10 +15,13 @@ import searchengine.dto.response.ApiResponse;
 import searchengine.lemma.LemmaConverter;
 import searchengine.model.SiteEntity;
 import searchengine.model.enums.StatusType;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -46,6 +49,12 @@ public class IndexationServiceImpl implements IndexationService {
 
     private final LemmaConverter lemmaConverter;
 
+    @Autowired
+    private final LemmaRepository lemmaRepository;
+
+    @Autowired
+    private final IndexRepository indexRepository;
+
     private final IndexationServiceComponents indexationServiceComponents;
 
     @Override
@@ -54,15 +63,31 @@ public class IndexationServiceImpl implements IndexationService {
         if (isIndexationRunning()) {
             return new ApiResponse(false, INDEXATION_IS_ALREADY_RUNNING_TEXT);
         } else {
-            executorService = null;
+            List<Site> siteList = sites.getSites();
+            executorService = Executors.newCachedThreadPool();
             indexationServiceComponents.cleanDataBeforeIndexing();
-            for (Site site : sites.getSites()) {
+            for (Site site : siteList) {
                 SiteEntity siteEntity = new SiteEntity();
+                siteEntity.setName(site.getName());
+                siteEntity.setUrl(site.getUrl());
+                siteEntity.setStatus(StatusType.INDEXING);
+                siteEntity.setLastError(null);
+                siteEntity.setStatusTime(LocalDateTime.now());
                 indexationServiceComponents.setIndexingStatusSite(siteEntity, site);
                 isIndexationRunning = true;
                 parseSite(siteEntity);
             }
-            return new ApiResponse(true, null);
+            executorService.shutdown();
+        }
+        return new ApiResponse(true, null);
+    }
+
+    private void parseSite(SiteEntity siteEntity) {
+        if (!indexationServiceComponents.isUrlValid(siteEntity.getUrl())) {
+            indexationServiceComponents.setFailedStatusSite(siteEntity);
+        } else {
+            executorService.submit(new SiteRunnable(siteEntity, siteRepository, pageRepository, lemmaRepository,
+                    indexRepository, lemmaConverter, indexationServiceComponents, sites));
         }
     }
 
@@ -91,9 +116,10 @@ public class IndexationServiceImpl implements IndexationService {
                 Connection.Response response;
                 Document document;
                 try {
-                    Thread.sleep(500);
-                    response = Jsoup.connect(url).userAgent("ParSearchBot")
-                            .referrer("http://www.google.com").execute();
+                    Thread.sleep(300);
+                    response = Jsoup.connect(url)
+                            .userAgent(sites.getUserAgent())
+                            .referrer(sites.getReferrer()).execute();
                     document = response.parse();
                 } catch (IOException | InterruptedException e) {
                     throw new RuntimeException(e);
@@ -105,20 +131,6 @@ public class IndexationServiceImpl implements IndexationService {
                 return new ApiResponse(true);
             } else {
                 return new ApiResponse(false, INVALID_URL_ERROR_TEXT);
-            }
-        }
-    }
-
-    private void parseSite(SiteEntity siteEntity) {
-        if (!indexationServiceComponents.isUrlValid(siteEntity.getUrl())) {
-            indexationServiceComponents.setFailedStatusSite(siteEntity);
-        } else {
-            synchronized (Executors.class) {
-                if (executorService == null) {
-                    executorService = Executors.newCachedThreadPool();
-                }
-                executorService.submit(new SiteRunnable(siteEntity, siteRepository,
-                        pageRepository, lemmaConverter, indexationServiceComponents));
             }
         }
     }

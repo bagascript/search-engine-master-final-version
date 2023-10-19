@@ -93,7 +93,7 @@ public class SearchServiceImpl implements SearchService {
         return totalApiResponse;
     }
 
-    private ApiResponse getFoundResultsResponse(String query, SiteEntity siteEntity)  {
+    private ApiResponse getFoundResultsResponse(String query, SiteEntity siteEntity) {
         ApiResponse apiResponse;
         List<DataProperties> dataPropertiesList;
         String[] words = lemmaConverter.splitContentIntoWords(query);
@@ -154,12 +154,12 @@ public class SearchServiceImpl implements SearchService {
                 resultWordFormSet.add(resultWordForm);
             }
         }
-        for(String word : resultWordFormSet) {
-            if(!lemmaRepository.existsByLemmaAndSiteId(word, siteEntity.getId())) {
+        for (String word : resultWordFormSet) {
+            if (!lemmaRepository.existsByLemmaAndSiteId(word, siteEntity.getId())) {
                 return new HashSet<>();
             } else {
                 LemmaEntity lemmaEntity = getLemmaByCheckingOnFactor(word, siteEntity);
-                if(lemmaEntity != null) {
+                if (lemmaEntity != null) {
                     lemmaSet.add(lemmaEntity);
                 } else {
                     return new HashSet<>();
@@ -201,7 +201,7 @@ public class SearchServiceImpl implements SearchService {
         return pageEntities;
     }
 
-    private List<DataProperties> saveDataIntoList(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas)  {
+    private List<DataProperties> saveDataIntoList(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas) {
         List<DataProperties> dataPropertiesList = new ArrayList<>();
         float maxAbsoluteRelevance = getMaxPageRelevance(pageEntities, lemmas);
         for (PageEntity pageEntity : pageEntities) {
@@ -257,7 +257,7 @@ public class SearchServiceImpl implements SearchService {
     public String checkOnSnippetLength(String snippet, Set<String> commonWords, String content) {
         StringBuilder builder = new StringBuilder(snippet);
         String finalSnippet = snippet;
-        if(snippet.length() < SNIPPET_MAX_SIZE) {
+        if (snippet.length() < SNIPPET_MAX_SIZE) {
             String editedSnippet = snippet.substring(3).concat("...");
             int indexDots = editedSnippet.indexOf("...");
             String firstFragment = editedSnippet.substring(0, indexDots);
@@ -267,12 +267,12 @@ public class SearchServiceImpl implements SearchService {
             String finalVersion = content.substring(lastSnippetIndexInContent, extraIndexAmount);
             finalSnippet = builder.replace(indexDots, indexDots + 3, finalVersion).toString();
         }
-
         for (String commonWord : commonWords) {
-            finalSnippet = finalSnippet.replaceAll(commonWord, "<b>" + commonWord + "</b>");
+            if (!finalSnippet.contains("<b>" + commonWord + "</b>")) {
+                finalSnippet = finalSnippet.replaceAll(commonWord, "<b>" + commonWord + "</b>");
+            }
         }
-
-        if(finalSnippet.length() > SNIPPET_MAX_SIZE) {
+        if (finalSnippet.length() > SNIPPET_MAX_SIZE) {
             finalSnippet = finalSnippet.substring(0, SNIPPET_MAX_SIZE);
         }
 

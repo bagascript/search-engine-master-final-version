@@ -91,14 +91,12 @@ public class LemmaConverter {
         }
     }
 
-    private void convertContentToLemmas(String content, PageEntity pageEntity) {
+    public void convertContentToLemmas(String content, PageEntity pageEntity) {
         Set<String> uniqueLemmas = new HashSet<>();
         String[] words = splitContentIntoWords(content);
-
         for (String word : words) {
             isIndexing = true;
             List<String> wordBaseForms = returnWordIntoBaseForm(word);
-
             if (!wordBaseForms.isEmpty()) {
                 String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
                 int siteId = pageEntity.getSite().getId();

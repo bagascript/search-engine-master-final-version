@@ -2,14 +2,14 @@ package searchengine.dto.indexation;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import searchengine.config.SitesList;
 import searchengine.lemma.LemmaConverter;
 import searchengine.model.SiteEntity;
 import searchengine.model.enums.StatusType;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 
 import static searchengine.services.indexation.IndexationServiceImpl.isIndexationRunning;
@@ -17,41 +17,27 @@ import static searchengine.services.indexation.IndexationServiceImpl.isIndexatio
 @Slf4j
 @RequiredArgsConstructor
 public class SiteRunnable implements Runnable {
-    public static final Object MONITOR = new Object();
-    private final SiteEntity siteEntity;
+    private final SiteEntity siteUrl;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexRepository indexRepository;
     private final LemmaConverter lemmaConverter;
     private final IndexationServiceComponents indexationServiceComponents;
+    private final SitesList sites;
 
     @Override
     public void run() {
-        String siteUrl = indexationServiceComponents.editSiteUrl(siteEntity.getUrl());
-        LinkFinder linkFinder = new LinkFinder(siteEntity, siteUrl.concat("/"), siteRepository, pageRepository, lemmaConverter);
+        SiteEntity site = siteRepository.findByUrl(siteUrl.getUrl());
+        String siteUrl = indexationServiceComponents.editSiteUrl(site.getUrl());
         ForkJoinPool forkJoinPool = new ForkJoinPool();
-        ConcurrentHashMap<String, SiteEntity> links = forkJoinPool.invoke(linkFinder);
-
-
-        if (isIndexationRunning) {
-            synchronized (MONITOR) {
-                updateSiteStatusOnIndexed(links);
-            }
-        } else {
+        forkJoinPool.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, siteRepository, pageRepository, lemmaConverter, lemmaRepository, indexRepository));
+        if (!isIndexationRunning) {
             forkJoinPool.shutdownNow();
-        }
-    }
-
-    private void updateSiteStatusOnIndexed(ConcurrentHashMap<String, SiteEntity> links) {
-        for (Map.Entry<String, SiteEntity> link : links.entrySet()) {
-            SiteEntity site = link.getValue();
-            String finalSite = lemmaConverter.editSiteURL(site.getUrl());
-            if (!pageRepository.getLastUrlBySiteId(site).equals(link.getKey().replace(finalSite, ""))) {
-                continue;
-            }
+        } else {
             siteRepository.updateOnIndexed(site.getId(), StatusType.INDEXED);
             siteRepository.updateStatusTime(site.getId());
             log.info("</Сайт " + site.getName() + " сохранен/>");
-            break;
         }
     }
 }
