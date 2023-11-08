@@ -4,10 +4,5 @@ public enum StatusType
 {
     INDEXING,
     INDEXED,
-    FAILED;
-
-    StatusType()
-    {
-
-    }
+    FAILED
 }

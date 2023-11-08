@@ -6,6 +6,6 @@ import lombok.Setter;
 @Setter
 @Getter
 public class Site {
-    private  String url;
-    private  String name;
+    private String url;
+    private String name;
 }

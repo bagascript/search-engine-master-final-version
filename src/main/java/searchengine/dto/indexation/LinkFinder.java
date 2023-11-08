@@ -31,13 +31,12 @@ public class LinkFinder extends RecursiveAction {
     private final String url;
     private static volatile List<String> urlList = new ArrayList<>();
     private final SiteEntity siteEntity;
+    private final LemmaConverter lemmaConverter;
 
     @Autowired
     private final SiteRepository siteRepository;
     @Autowired
     private final PageRepository pageRepository;
-
-    private final LemmaConverter lemmaConverter;
 
     @Autowired
     private final LemmaRepository lemmaRepository;
@@ -85,23 +84,27 @@ public class LinkFinder extends RecursiveAction {
             List<String> wordBaseForms = lemmaConverter.returnWordIntoBaseForm(word);
             if (!wordBaseForms.isEmpty()) {
                 String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
-                if (lemmaRepository.existsByLemmaAndSiteId(resultWordForm, pageEntity.getSite().getId())) {
-                    LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, pageEntity.getSite());
-                    if (!uniqueLemmas.contains(resultWordForm)) {
-                        lemmaRepository.updateFrequency(lemmaEntity.getId(), lemmaEntity.getFrequency() + 1);
-                        uniqueLemmas.add(resultWordForm);
-                        indexLemma(pageEntity, lemmaEntity);
-                    }
-                } else if (!uniqueLemmas.contains(resultWordForm)) {
-                    LemmaEntity lemmaEntity = new LemmaEntity();
-                    lemmaEntity.setLemma(resultWordForm);
-                    lemmaEntity.setFrequency(1);
-                    lemmaEntity.setSite(pageEntity.getSite());
-                    lemmaRepository.saveAndFlush(lemmaEntity);
-                    uniqueLemmas.add(resultWordForm);
-                    indexLemma(pageEntity, lemmaEntity);
-                }
+                saveLemmaDataIntoDB(uniqueLemmas, resultWordForm, pageEntity);
             }
+        }
+    }
+
+    private void saveLemmaDataIntoDB(Set<String> uniqueLemmas, String resultWordForm, PageEntity pageEntity) {
+        if (lemmaRepository.existsByLemmaAndSiteId(resultWordForm, pageEntity.getSite().getId())) {
+            LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, pageEntity.getSite());
+            if (!uniqueLemmas.contains(resultWordForm)) {
+                lemmaRepository.updateFrequency(lemmaEntity.getId(), lemmaEntity.getFrequency() + 1);
+                uniqueLemmas.add(resultWordForm);
+                indexLemma(pageEntity, lemmaEntity);
+            }
+        } else if (!uniqueLemmas.contains(resultWordForm)) {
+            LemmaEntity lemmaEntity = new LemmaEntity();
+            lemmaEntity.setLemma(resultWordForm);
+            lemmaEntity.setFrequency(1);
+            lemmaEntity.setSite(pageEntity.getSite());
+            lemmaRepository.saveAndFlush(lemmaEntity);
+            uniqueLemmas.add(resultWordForm);
+            indexLemma(pageEntity, lemmaEntity);
         }
     }
 
@@ -127,8 +130,8 @@ public class LinkFinder extends RecursiveAction {
                     && !link.contains("#") && !urlList.contains(link) && !link.contains("?");
             if (checkUrlOnValidElementType(link) && isLinkCorrect) {
                 urlList.add(link);
-                LinkFinder task = new LinkFinder(sites, link, siteEntity, siteRepository,
-                        pageRepository, lemmaConverter, lemmaRepository, indexRepository);
+                LinkFinder task = new LinkFinder(sites, link, siteEntity, lemmaConverter, siteRepository,
+                        pageRepository, lemmaRepository, indexRepository);
                 task.fork();
                 tasks.add(task);
             }

@@ -14,7 +14,6 @@ import java.util.List;
 
 
 public interface IndexRepository extends JpaRepository<IndexEntity, Integer> {
-
     @Transactional
     boolean existsByPageIdAndLemmaId(int pageId, int lemmaId);
 

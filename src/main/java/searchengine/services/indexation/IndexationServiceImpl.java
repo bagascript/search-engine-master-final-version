@@ -21,7 +21,6 @@ import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -33,12 +32,15 @@ public class IndexationServiceImpl implements IndexationService {
     private static boolean isStartIndexingMethodActive = false;
 
     private static final String INVALID_URL_ERROR_TEXT = "Данная страница находится за пределами сайтов, указанных в конфигурационном файле";
-    private static final String INDEXATION_IS_ALREADY_RUNNING_TEXT = "Индексация уже запущена";
+    private static final String INDEXATION_IS_ALREADY_RUNNING_ERROR_TEXT = "Индексация уже запущена";
     private static final String INDEXATION_IS_STOPPED_BY_USER_TEXT = "Индексация остановлена пользователем";
-    private static final String INDEXATION_IS_NOT_RUNNING = "Индексация не запущена! Обновите страницу.";
+    private static final String INDEXATION_IS_NOT_RUNNING_ERROR_TEXT = "Индексация не запущена! Обновите страницу";
     private static final String URL_EMPTY_ERROR_TEXT = "Страница не указана";
 
+    private final LemmaConverter lemmaConverter;
+    private final IndexationServiceComponents indexationServiceComponents;
     private final SitesList sites;
+
     private ExecutorService executorService;
 
     @Autowired
@@ -47,63 +49,44 @@ public class IndexationServiceImpl implements IndexationService {
     @Autowired
     private final PageRepository pageRepository;
 
-    private final LemmaConverter lemmaConverter;
-
     @Autowired
     private final LemmaRepository lemmaRepository;
 
     @Autowired
     private final IndexRepository indexRepository;
 
-    private final IndexationServiceComponents indexationServiceComponents;
-
     @Override
     public ApiResponse startIndexingApiResponse() {
         isStartIndexingMethodActive = true;
         if (isIndexationRunning()) {
-            return new ApiResponse(false, INDEXATION_IS_ALREADY_RUNNING_TEXT);
+            return new ApiResponse(false, INDEXATION_IS_ALREADY_RUNNING_ERROR_TEXT);
         } else {
             List<Site> siteList = sites.getSites();
             executorService = Executors.newCachedThreadPool();
             indexationServiceComponents.cleanDataBeforeIndexing();
             for (Site site : siteList) {
-                SiteEntity siteEntity = new SiteEntity();
-                siteEntity.setName(site.getName());
-                siteEntity.setUrl(site.getUrl());
-                siteEntity.setStatus(StatusType.INDEXING);
-                siteEntity.setLastError(null);
-                siteEntity.setStatusTime(LocalDateTime.now());
-                indexationServiceComponents.setIndexingStatusSite(siteEntity, site);
+                SiteEntity siteEntity = indexationServiceComponents.setIndexingStatusSite(site);
                 isIndexationRunning = true;
                 parseSite(siteEntity);
             }
             executorService.shutdown();
         }
-        return new ApiResponse(true, null);
-    }
-
-    private void parseSite(SiteEntity siteEntity) {
-        if (!indexationServiceComponents.isUrlValid(siteEntity.getUrl())) {
-            indexationServiceComponents.setFailedStatusSite(siteEntity);
-        } else {
-            executorService.submit(new SiteRunnable(siteEntity, siteRepository, pageRepository, lemmaRepository,
-                    indexRepository, lemmaConverter, indexationServiceComponents, sites));
-        }
+        return new ApiResponse(true);
     }
 
     @Override
     public ApiResponse stopIndexingApiResponse() {
         isStartIndexingMethodActive = false;
         if (!isIndexationRunning()) {
-            return new ApiResponse(false, INDEXATION_IS_NOT_RUNNING);
+            return new ApiResponse(false, INDEXATION_IS_NOT_RUNNING_ERROR_TEXT);
         } else {
-            List<SiteEntity> resSites = siteRepository.findAllByStatus(StatusType.INDEXING);
-            for (SiteEntity site : resSites) {
+            List<SiteEntity> siteList = siteRepository.findAllByStatus(StatusType.INDEXING);
+            for (SiteEntity site : siteList) {
                 isIndexationRunning = false;
                 executorService.shutdownNow();
                 siteRepository.updateOnFailed(site.getId(), StatusType.FAILED, INDEXATION_IS_STOPPED_BY_USER_TEXT);
             }
-            return new ApiResponse(true, null);
+            return new ApiResponse(true);
         }
     }
 
@@ -112,22 +95,8 @@ public class IndexationServiceImpl implements IndexationService {
         if (url.isEmpty()) {
             return new ApiResponse(false, URL_EMPTY_ERROR_TEXT);
         } else {
-            if (isUrlStartingWithSite(url)) {
-                Connection.Response response;
-                Document document;
-                try {
-                    Thread.sleep(300);
-                    response = Jsoup.connect(url)
-                            .userAgent(sites.getUserAgent())
-                            .referrer(sites.getReferrer()).execute();
-                    document = response.parse();
-                } catch (IOException | InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                indexationServiceComponents.deletePageData(url);
-                executorService = Executors.newCachedThreadPool();
-                executorService.submit(() -> indexationServiceComponents.saveAndFilterPageContent(response, document, url));
-                executorService.shutdown();
+            if (isUrlStartingWithSitePath(url)) {
+                parsePage(url);
                 return new ApiResponse(true);
             } else {
                 return new ApiResponse(false, INVALID_URL_ERROR_TEXT);
@@ -135,11 +104,36 @@ public class IndexationServiceImpl implements IndexationService {
         }
     }
 
+    private void parseSite(SiteEntity siteEntity) {
+        if (indexationServiceComponents.isUrlValid(siteEntity.getUrl())) {
+            executorService.submit(new SiteRunnable(siteEntity, siteRepository, pageRepository,
+                    lemmaRepository, indexRepository, lemmaConverter, indexationServiceComponents, sites));
+        } else {
+            indexationServiceComponents.setFailedStatusSite(siteEntity);
+        }
+    }
+
+    private void parsePage(String url) {
+        Connection.Response response;
+        Document document;
+        try {
+            Thread.sleep(300);
+            response = Jsoup.connect(url).userAgent(sites.getUserAgent()).referrer(sites.getReferrer()).execute();
+            document = response.parse();
+        } catch (IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        indexationServiceComponents.deletePageData(url);
+        executorService = Executors.newCachedThreadPool();
+        executorService.submit(() -> indexationServiceComponents.saveAndFilterPageContent(response, document, url));
+        executorService.shutdown();
+    }
+
     private boolean isIndexationRunning() {
         if (isIndexationRunning) {
             if (isStartIndexingMethodActive) {
-                List<SiteEntity> indexedSitesList = siteRepository.findAllByStatus(StatusType.INDEXING);
-                return indexedSitesList.size() == sites.getSites().size();
+                List<SiteEntity> indexedSiteList = siteRepository.findAllByStatus(StatusType.INDEXING);
+                return indexedSiteList.size() == sites.getSites().size();
             } else {
                 return true;
             }
@@ -148,7 +142,7 @@ public class IndexationServiceImpl implements IndexationService {
         }
     }
 
-    private boolean isUrlStartingWithSite(String url) {
+    private boolean isUrlStartingWithSitePath(String url) {
         return sites.getSites().stream().anyMatch(site -> {
             String editedSiteUrl = indexationServiceComponents.editSiteUrl(site.getUrl());
             String editedUrl = indexationServiceComponents.editSiteUrl(url);

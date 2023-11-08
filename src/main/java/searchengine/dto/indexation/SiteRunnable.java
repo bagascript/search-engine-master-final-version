@@ -31,7 +31,8 @@ public class SiteRunnable implements Runnable {
         SiteEntity site = siteRepository.findByUrl(siteUrl.getUrl());
         String siteUrl = indexationServiceComponents.editSiteUrl(site.getUrl());
         ForkJoinPool forkJoinPool = new ForkJoinPool();
-        forkJoinPool.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, siteRepository, pageRepository, lemmaConverter, lemmaRepository, indexRepository));
+        forkJoinPool.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, lemmaConverter,
+                siteRepository, pageRepository, lemmaRepository, indexRepository));
         if (!isIndexationRunning) {
             forkJoinPool.shutdownNow();
         } else {

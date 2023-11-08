@@ -29,7 +29,10 @@ import java.util.List;
 @Slf4j
 @Component
 public class IndexationServiceComponents {
-    private static final String SITE_IS_NOT_AVAILABLE_TEXT = "Главная страница сайта не доступна";
+    private static final String SITE_IS_NOT_AVAILABLE_ERROR_TEXT = "Главная страница сайта не доступна";
+
+    private final LemmaConverter lemmaConverter;
+    private final SitesList sites;
 
     @Autowired
     private final SiteRepository siteRepository;
@@ -43,10 +46,6 @@ public class IndexationServiceComponents {
     @Autowired
     private final IndexRepository indexRepository;
 
-    private final LemmaConverter lemmaConverter;
-
-    private final SitesList sites;
-
     public void cleanDataBeforeIndexing() {
         indexRepository.deleteAllInBatch();
         lemmaRepository.deleteAllInBatch();
@@ -54,18 +53,20 @@ public class IndexationServiceComponents {
         siteRepository.deleteAllInBatch();
     }
 
-    public void setIndexingStatusSite(SiteEntity siteEntity, Site site) {
+    public SiteEntity setIndexingStatusSite(Site site) {
+        SiteEntity siteEntity = new SiteEntity();
         siteEntity.setName(site.getName());
         siteEntity.setUrl(site.getUrl());
         siteEntity.setStatus(StatusType.INDEXING);
         siteEntity.setLastError(null);
         siteEntity.setStatusTime(LocalDateTime.now());
         siteRepository.save(siteEntity);
+        return siteEntity;
     }
 
     public void setFailedStatusSite(SiteEntity siteEntity) {
         siteRepository.updateStatusTime(siteEntity.getId());
-        siteRepository.updateOnFailed(siteEntity.getId(), StatusType.FAILED, SITE_IS_NOT_AVAILABLE_TEXT);
+        siteRepository.updateOnFailed(siteEntity.getId(), StatusType.FAILED, SITE_IS_NOT_AVAILABLE_ERROR_TEXT);
     }
 
     public boolean isUrlValid(String url) {
@@ -79,25 +80,27 @@ public class IndexationServiceComponents {
     }
 
     public boolean saveAndFilterPageContent(Connection.Response response, Document document, String url) {
-        SiteEntity siteUrl = siteRepository.findByUrl(sites.getSites().stream()
-                .filter(site -> url.startsWith(editSiteUrl(site.getUrl())))
-                .findFirst().orElseThrow().getUrl());
+        String siteUrl = sites.getSites().stream().filter(site ->
+                        url.startsWith(editSiteUrl(site.getUrl()))).findFirst().orElseThrow().getUrl();
+        SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
         String content = document.html();
         int statusCode = response.statusCode();
 
-        String finalUrlVersion = editUrl(url);
+        String finalUrlVersion = convertURLIntoURI(url);
         PageEntity pageEntity = new PageEntity();
         pageEntity.setPath(finalUrlVersion);
         pageEntity.setCode(statusCode);
         pageEntity.setContent(content);
-        pageEntity.setSite(siteUrl);
+        pageEntity.setSite(siteEntity);
         pageRepository.saveAndFlush(pageEntity);
-        lemmaConverter.filterPageContent(pageRepository.getContentByPath(pageEntity.getPath()), pageEntity);
+
+        String pageContent = pageRepository.getContentByPath(pageEntity.getPath());
+        lemmaConverter.filterPageContent(pageContent, pageEntity);
         return true;
     }
 
     public void deletePageData(String url) {
-        String finalUrlVersion = editUrl(url);
+        String finalUrlVersion = convertURLIntoURI(url);
         if (pageRepository.existsByPath(finalUrlVersion)) {
             PageEntity pageEntity = pageRepository.findByPath(finalUrlVersion);
 
@@ -114,22 +117,14 @@ public class IndexationServiceComponents {
         }
     }
 
-    private String editUrl(String url) {
+    private String convertURLIntoURI(String url) {
         String editedUrl = editSiteUrl(url);
         String siteUrl = sites.getSites().stream().filter(site -> {
             String editedSiteUrl = editSiteUrl(site.getUrl());
             return editedUrl.contains(editedSiteUrl);
         }).findFirst().orElseThrow().getUrl();
-        String finalSite = siteUrl;
-        StringBuilder editedSite = new StringBuilder(finalSite);
-        if (siteUrl.endsWith("/")) {
-            finalSite = editedSite.deleteCharAt(siteUrl.length() - 1).toString();
-        }
 
-        if (siteUrl.contains("www.")) {
-            finalSite = editedSite.toString().replaceFirst("w{3}\\.", "");
-        }
-
+        String finalSite = lemmaConverter.editSiteURL(siteUrl);
         return editedUrl.replace(finalSite, "");
     }
 }

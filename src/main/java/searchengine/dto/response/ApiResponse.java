@@ -7,8 +7,7 @@ import searchengine.dto.statistics.StatisticsData;
 import java.util.List;
 
 @Data
-public class ApiResponse
-{
+public class ApiResponse {
     private boolean result;
     private String error;
     private int count;
