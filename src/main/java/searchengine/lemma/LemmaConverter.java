@@ -169,12 +169,12 @@ public class LemmaConverter {
     public List<String> returnWordIntoBaseForm(String word) {
         List<String> lemmaList = new ArrayList<>();
 
-        if (checkLanguage(word).equals("Russian")) {
+        if (checkLanguage(word).name().equals("Russian")) {
             if (!word.isEmpty() && !isRusWordFunctional(word)) {
                 List<String> baseRusForm = russianLuceneMorphology.getNormalForms(word);
                 lemmaList.add(baseRusForm.get(baseRusForm.size() - 1));
             }
-        } else if (checkLanguage(word).equals("English")) {
+        } else if (checkLanguage(word).name().equals("English")) {
             if (!word.isEmpty() && !isEngWordFunctional(word)) {
                 List<String> baseEngForm = englishLuceneMorphology.getNormalForms(word);
                 lemmaList.add(baseEngForm.get(baseEngForm.size() - 1));
@@ -183,16 +183,16 @@ public class LemmaConverter {
         return lemmaList;
     }
 
-    private String checkLanguage(String word) {
+    private Languages checkLanguage(String word) {
         String russianAlphabet = "[а-яА-Я]{2,}";
         String englishAlphabet = "[a-zA-Z]{2,}";
 
         if (word.matches(russianAlphabet)) {
-            return "Russian";
+            return Languages.Russian;
         } else if (word.matches(englishAlphabet)) {
-            return "English";
+            return Languages.English;
         } else {
-            return "";
+            return Languages.NONEXISTENT;
         }
     }
 

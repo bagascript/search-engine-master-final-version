@@ -1,4 +1,4 @@
-package searchengine.dto.indexation;
+package searchengine.proccessing;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +10,8 @@ import searchengine.repository.IndexRepository;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
+import searchengine.services.indexation.IndexationServiceImpl;
+
 import java.util.concurrent.ForkJoinPool;
 
 import static searchengine.services.indexation.IndexationServiceImpl.isIndexationRunning;
@@ -23,13 +25,12 @@ public class SiteRunnable implements Runnable {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private final LemmaConverter lemmaConverter;
-    private final IndexationServiceComponents indexationServiceComponents;
     private final SitesList sites;
 
     @Override
     public void run() {
         SiteEntity site = siteRepository.findByUrl(siteUrl.getUrl());
-        String siteUrl = indexationServiceComponents.editSiteUrl(site.getUrl());
+        String siteUrl = IndexationServiceImpl.editSiteUrl(site.getUrl());
         ForkJoinPool forkJoinPool = new ForkJoinPool();
         forkJoinPool.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, lemmaConverter,
                 siteRepository, pageRepository, lemmaRepository, indexRepository));

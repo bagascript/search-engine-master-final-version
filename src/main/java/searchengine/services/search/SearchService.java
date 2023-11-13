@@ -6,7 +6,7 @@ import java.io.IOException;
 
 public interface SearchService
 {
-    ApiResponse searchForOneSite(String query, String site) throws IOException;
+    ApiResponse searchForOneSite(String query, String site);
 
-    ApiResponse searchForAllSites(String query) throws IOException;
+    ApiResponse searchForAllSites(String query);
 }

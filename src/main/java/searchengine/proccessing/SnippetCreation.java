@@ -1,7 +1,8 @@
-package searchengine.dto.search;
+package searchengine.proccessing;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import searchengine.dto.search.CommonWord;
 import searchengine.lemma.LemmaConverter;
 import searchengine.model.LemmaEntity;
 
