@@ -1,7 +1,7 @@
 package searchengine.services.statistics;
 
-import searchengine.dto.response.ApiResponse;
+import searchengine.dto.response.ApiResponses;
 
 public interface StatisticsService {
-    ApiResponse getStatistics();
+    ApiResponses getStatistics();
 }

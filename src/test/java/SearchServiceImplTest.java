@@ -163,38 +163,6 @@ public class SearchServiceImplTest extends TestCase {
         return snippetFragments.toString();
     }
 
-    String snippetDev = "самостоятельный старт даёт свободу... кто такой менеджер маркетплейсов";
-    public void testCheckSnippetSizeForCorrectDivision() {
-        int length = snippetDev.length();
-        int snippetHalf = length / 2;
-        int index = 0;
-        String word = "";
-
-        for(CommonWord commonWord : commonWords2) {
-            if(commonWord.getIndex() > snippetHalf) continue;
-
-            if(commonWord.getIndex() > index) {
-                index = commonWord.getIndex();
-                word = commonWord.getWord();
-            }
-        }
-
-        boolean isWordInSnippetFirstHalf = snippetDev.substring(index, snippetHalf).contains(word);
-        int finalIndex = snippetHalf - (snippetHalf - index);
-
-        String firstSnippetHalf;
-        String secondSnippetHalf;
-        if(snippetDev.substring(index, snippetHalf).contains(word)) {
-            firstSnippetHalf = snippetDev.substring(0, snippetHalf);
-            secondSnippetHalf = snippetDev.substring(snippetHalf);
-        } else {
-            firstSnippetHalf = snippetDev.substring(0, finalIndex);
-            secondSnippetHalf = snippetDev.substring(finalIndex);
-        }
-        System.out.println();
-    }
-
-
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();

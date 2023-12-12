@@ -4,15 +4,15 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import searchengine.model.PageEntity;
 
 @Getter
 @Setter
-@AllArgsConstructor
 @NoArgsConstructor
-public class CommonWord
+@AllArgsConstructor
+public class PageRelevance
 {
-    private String word;
-    private String lemma;
-    private int length;
-    private int index;
+    private PageEntity pageEntity;
+    private float absoluteRank;
+    private float maxRank;
 }

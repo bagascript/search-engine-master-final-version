@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
-import searchengine.dto.response.ApiResponse;
+import searchengine.dto.response.ApiResponses;
 import searchengine.dto.search.*;
 import searchengine.lemma.LemmaConverter;
 import searchengine.model.IndexEntity;
@@ -20,6 +20,7 @@ import searchengine.proccessing.SnippetCreation;
 import searchengine.repository.IndexRepository;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.SiteRepository;
+import searchengine.dto.response.ServerResponses;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,9 +29,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class SearchServiceImpl implements SearchService {
-    private static final String EMPTY_QUERY_ERROR_TEXT = "Задан пустой поисковый запрос";
-    private static final String SITE_IS_NOT_INDEXED_ERROR_TEXT = "Сайт/сайты ещё не проиндексированы";
-
     private static boolean isItSearchOfAllSites = false;
 
     private final LemmaConverter lemmaConverter;
@@ -49,56 +47,58 @@ public class SearchServiceImpl implements SearchService {
     private final IndexRepository indexRepository;
 
     @Override
-    public ApiResponse searchForOneSite(String query, String site) {
-        ApiResponse apiResponse;
+    public ApiResponses searchForOneSite(String query, String site) {
+        ApiResponses apiResponses;
         SiteEntity siteEntity = siteRepository.findByUrl(site);
         if (!siteEntity.getStatus().name().equals("INDEXED")) {
-            apiResponse = new ApiResponse(false, SITE_IS_NOT_INDEXED_ERROR_TEXT);
+            apiResponses = new ApiResponses(false, ServerResponses.SITE_IS_NOT_INDEXED_ERROR_TEXT);
         } else if (query.isEmpty()) {
-            apiResponse = new ApiResponse(false, EMPTY_QUERY_ERROR_TEXT);
+            apiResponses = new ApiResponses(false, ServerResponses.EMPTY_QUERY_ERROR_TEXT);
         } else {
-            apiResponse = getFoundResultsResponse(query, siteEntity);
+            apiResponses = getFoundResultsResponse(query, siteEntity);
         }
-        return apiResponse;
+        return apiResponses;
     }
 
     @Override
-    public ApiResponse searchForAllSites(String query) {
-        List<ApiResponse> apiResponseList = new ArrayList<>();
+    public ApiResponses searchForAllSites(String query) {
+        List<ApiResponses> apiResponsesList = new ArrayList<>();
         List<DataProperties> totalDataProperties = new ArrayList<>();
         List<String> totalError = new ArrayList<>();
-        ApiResponse totalApiResponse;
+        ApiResponses totalApiResponses;
         int totalCount = 0;
         isItSearchOfAllSites = true;
 
         for (Site site : sites.getSites()) {
-            ApiResponse apiResponse = searchForOneSite(query, site.getUrl());
-            apiResponseList.add(apiResponse);
-            totalError.add(apiResponse.getError());
+            ApiResponses apiResponses = searchForOneSite(query, site.getUrl());
+            apiResponsesList.add(apiResponses);
+            totalError.add(apiResponses.getError());
         }
 
-        if (apiResponseList.stream().anyMatch(s -> !s.isResult())) {
-            totalApiResponse = sendNegativeResponse(totalError);
+        if (apiResponsesList.stream().anyMatch(s -> !s.isResult())) {
+            totalApiResponses = sendNegativeResponse(totalError);
         } else {
-            for (ApiResponse apiResponse : apiResponseList) {
-                if (apiResponse.getData().isEmpty()) continue;
-                totalCount += apiResponse.getCount();
-                totalDataProperties.addAll(apiResponse.getData());
+            for (ApiResponses apiResponses : apiResponsesList) {
+                if (apiResponses.getData().isEmpty()) {
+                    continue;
+                }
+                totalCount += apiResponses.getCount();
+                totalDataProperties.addAll(apiResponses.getData());
             }
-            totalApiResponse = sendPositiveResponse(totalCount, totalDataProperties);
+            totalApiResponses = sendPositiveResponse(totalCount, totalDataProperties);
         }
         isItSearchOfAllSites = false;
-        return totalApiResponse;
+        return totalApiResponses;
     }
 
-    private ApiResponse getFoundResultsResponse(String query, SiteEntity siteEntity) {
-        ApiResponse apiResponse;
+    private ApiResponses getFoundResultsResponse(String query, SiteEntity siteEntity) {
+        ApiResponses apiResponses;
         List<DataProperties> dataPropertiesList;
         String[] words = lemmaConverter.splitContentIntoWords(query);
         Set<LemmaEntity> resultWordsSet = pageFinder.editQueryWords(words, siteEntity);
         if (resultWordsSet.isEmpty()) {
             dataPropertiesList = new ArrayList<>();
-            apiResponse = new ApiResponse(true, 0, dataPropertiesList);
+            apiResponses = new ApiResponses(true, 0, dataPropertiesList);
         } else {
             Set<LemmaEntity> lemmas = pageFinder.getLemmasSet(resultWordsSet);
             String firstLemma = lemmas.stream().findFirst().orElseThrow().getLemma();
@@ -108,31 +108,34 @@ public class SearchServiceImpl implements SearchService {
 
             if (pageEntities.isEmpty()) {
                 dataPropertiesList = new ArrayList<>();
-                apiResponse = new ApiResponse(true, 0, dataPropertiesList);
+                apiResponses = new ApiResponses(true, 0, dataPropertiesList);
             } else {
                 dataPropertiesList = saveDataIntoList(pageEntities, lemmas);
-                apiResponse = getDataPropertiesListInfo(dataPropertiesList);
+                apiResponses = getDataPropertiesListInfo(dataPropertiesList);
             }
         }
-        return apiResponse;
+        return apiResponses;
     }
 
     private List<DataProperties> saveDataIntoList(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas) {
         List<DataProperties> dataPropertiesList = new ArrayList<>();
-        float maxAbsoluteRelevance = relevanceCalculation.getMaxPageRelevance(pageEntities, lemmas);
-        for (PageEntity pageEntity : pageEntities) {
+        List<PageRelevance> pageRelevanceList = relevanceCalculation.searchForAllLemmaIndexes(lemmas, pageEntities);
+        float maxRelevance = pageRelevanceList.get(0).getMaxRank();
+        for (PageRelevance pageRelevance : pageRelevanceList) {
             DataProperties dataProperties = new DataProperties();
-            Link link = editPageProperties(pageEntity.getSite().getUrl(), pageEntity.getPath(), pageEntity.getContent());
-            dataProperties.setSiteName(pageEntity.getSite().getName());
+            PageEntity page = pageRelevance.getPageEntity();
+            Link link = editPageProperties(page.getSite().getUrl(), page.getPath(), page.getContent());
+            dataProperties.setSiteName(page.getSite().getName());
             dataProperties.setSite(link.getSite());
             dataProperties.setUri(link.getUri());
             dataProperties.setTitle(link.getTitle());
-            dataProperties.setRelevance(relevanceCalculation.calculatePageRelevance(pageEntity, maxAbsoluteRelevance, lemmas));
+            dataProperties.setRelevance(pageRelevance.getAbsoluteRank() / maxRelevance);
             dataProperties.setSnippet(snippetCreation.getSnippetFromPageContent(link.getContent(), lemmas));
-            if (dataProperties.getSnippet().length() <= 3) continue;
+            if (dataProperties.getSnippet().length() <= 3) {
+                continue;
+            }
             dataPropertiesList.add(dataProperties);
         }
-
         return dataPropertiesList;
     }
 
@@ -148,45 +151,39 @@ public class SearchServiceImpl implements SearchService {
         return link;
     }
 
-    private ApiResponse getDataPropertiesListInfo(List<DataProperties> dataPropertiesList) {
-        ApiResponse apiResponse;
+    private ApiResponses getDataPropertiesListInfo(List<DataProperties> dataPropertiesList) {
+        ApiResponses apiResponses;
         if(!isItSearchOfAllSites) {
-            List<DataProperties> reducedDataPropertiesList = dataPropertiesList.subList(0, Math.min(dataPropertiesList.size(), 20));
-            apiResponse = new ApiResponse(true, dataPropertiesList.size(),
-                    reducedDataPropertiesList.stream()
-                            .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
-                            .collect(Collectors.toList()));
-        } else {
-            apiResponse = new ApiResponse(true, dataPropertiesList.size(),
-                    dataPropertiesList.stream()
-                            .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
-                            .collect(Collectors.toList()));
+            dataPropertiesList = dataPropertiesList.subList(0, Math.min(dataPropertiesList.size(), 20));
         }
-
-        return apiResponse;
+        apiResponses = new ApiResponses(true, dataPropertiesList.size(),
+                dataPropertiesList.stream()
+                        .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
+                        .collect(Collectors.toList()));
+        return apiResponses;
     }
 
-    private ApiResponse sendNegativeResponse(List<String> totalError) {
-        ApiResponse totalApiResponse;
-        if (totalError.contains(SITE_IS_NOT_INDEXED_ERROR_TEXT)) {
-            totalApiResponse = new ApiResponse(false, SITE_IS_NOT_INDEXED_ERROR_TEXT);
+    private ApiResponses sendNegativeResponse(List<String> totalError) {
+        ApiResponses totalApiResponses;
+        if (totalError.contains(ServerResponses.SITE_IS_NOT_INDEXED_ERROR_TEXT)) {
+            totalApiResponses = new ApiResponses(false, ServerResponses.SITE_IS_NOT_INDEXED_ERROR_TEXT);
         } else {
-            totalApiResponse = new ApiResponse(false, EMPTY_QUERY_ERROR_TEXT);
+            totalApiResponses = new ApiResponses(false, ServerResponses.EMPTY_QUERY_ERROR_TEXT);
         }
-        return totalApiResponse;
+        return totalApiResponses;
     }
 
-    private ApiResponse sendPositiveResponse(int totalCount, List<DataProperties> totalDataProperties) {
-        ApiResponse totalApiResponse;
+    private ApiResponses sendPositiveResponse(int totalCount, List<DataProperties> totalDataProperties) {
+        ApiResponses totalApiResponses;
         if (totalCount == 0 && totalDataProperties.isEmpty()) {
-            totalApiResponse = new ApiResponse(true, 0, totalDataProperties);
+            totalApiResponses = new ApiResponses(true, 0, totalDataProperties);
         } else {
             List<DataProperties> total = totalDataProperties.subList(0, Math.min(totalDataProperties.size(), 20));
-            totalApiResponse = new ApiResponse(true, totalDataProperties.size(),
+            totalApiResponses = new ApiResponses(true, totalDataProperties.size(),
                     total.stream()
                             .sorted(Collections.reverseOrder(Comparator.comparing(DataProperties::getRelevance)))
                             .collect(Collectors.toList()));
         }
-        return totalApiResponse;
+        return totalApiResponses;
     }
 }

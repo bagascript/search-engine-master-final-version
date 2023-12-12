@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import searchengine.model.IndexEntity;
@@ -17,19 +18,11 @@ import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.util.*;
 
+
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class LemmaConverter {
-    private RussianLuceneMorphology russianLuceneMorphology;
-    private EnglishLuceneMorphology englishLuceneMorphology;
-
-    @PostConstruct
-    public void init() throws IOException {
-        russianLuceneMorphology = new RussianLuceneMorphology();
-        englishLuceneMorphology = new EnglishLuceneMorphology();
-    }
-
     public static boolean isIndexing = false;
     private static boolean isDeleted = false;
 
@@ -45,10 +38,17 @@ public class LemmaConverter {
     @Autowired
     private final IndexRepository indexRepository;
 
-    public void filterPageContent(String content, PageEntity pageEntity) {
-        String finalContentVersion = content.replaceAll("<(.*?)+>", "").trim();
+    private RussianLuceneMorphology russianLuceneMorphology;
+    private EnglishLuceneMorphology englishLuceneMorphology;
 
-        System.out.println();
+    @PostConstruct
+    public void init() throws IOException {
+        russianLuceneMorphology = new RussianLuceneMorphology();
+        englishLuceneMorphology = new EnglishLuceneMorphology();
+    }
+
+    public void filterPageContent(String content, PageEntity pageEntity) {
+        String finalContentVersion = Jsoup.parse(content).text();
         if (!finalContentVersion.isEmpty()) {
             convertContentToLemmas(finalContentVersion, pageEntity);
         }
@@ -102,14 +102,16 @@ public class LemmaConverter {
                 int siteId = pageEntity.getSite().getId();
                 if (lemmaRepository.existsByLemmaAndSiteId(resultWordForm, siteId)) {
                     LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, pageEntity.getSite());
-                    searchAndSaveLemmas(resultWordForm, lemmaEntity, uniqueLemmas);
-                    indexLemma(pageEntity, lemmaEntity);
+                        searchAndSaveLemmas(resultWordForm, lemmaEntity, uniqueLemmas);
+                        indexLemma(pageEntity, lemmaEntity);
+
                 } else if (!uniqueLemmas.contains(resultWordForm)) {
                     LemmaEntity lemmaEntity = getNewLemma(resultWordForm, pageEntity);
-                    lemmaRepository.saveAndFlush(lemmaEntity);
-                    log.info("Новая лемма '" + lemmaEntity.getLemma() +  "' была добавлена");
-                    indexLemma(pageEntity, lemmaEntity);
-                    uniqueLemmas.add(resultWordForm);
+                        lemmaRepository.saveAndFlush(lemmaEntity);
+                        log.info("Новая лемма '" + lemmaEntity.getLemma() +  "' была добавлена");
+                        indexLemma(pageEntity, lemmaEntity);
+                        uniqueLemmas.add(resultWordForm);
+
                 }
             }
         }
@@ -143,6 +145,7 @@ public class LemmaConverter {
     private void indexLemma(PageEntity pageEntity, LemmaEntity lemmaEntity) {
         if (indexRepository.existsByPageIdAndLemmaId(pageEntity.getId(), lemmaEntity.getId())) {
             IndexEntity index = indexRepository.findByLemmaIdAndPageId(lemmaEntity.getId(), pageEntity.getId());
+
             indexRepository.updateIndexRank(index.getId(), index.getRank() + 1);
         } else {
             IndexEntity indexEntity = new IndexEntity();

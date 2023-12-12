@@ -13,8 +13,7 @@ import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
-public class SnippetCreation
-{
+public class SnippetCreation {
     private static final int SNIPPET_MAX_SIZE = 280;
 
     private final LemmaConverter lemmaConverter;
@@ -36,7 +35,9 @@ public class SnippetCreation
                     String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
                     if (lemmaEntity.getLemma().equals(resultWordForm) && !uniqueSetWords.contains(word)) {
                         uniqueSetWords.add(word);
+                        commonWord.setLemma(resultWordForm);
                         commonWords.add(commonWord);
+
                         snippetSketch = findFragmentsWithQueryWord(snippet, word, content.toLowerCase()).toString();
                     }
                 }
@@ -52,23 +53,10 @@ public class SnippetCreation
             if (matcher.find()) {
                 String fragmentText = content.substring(matcher.start(), matcher.end());
                 String text = "..." + fragmentText;
-                snippet.append(text);
+                if (!snippet.toString().contains(fragmentText)) snippet.append(text);
             }
         }
         return snippet;
-    }
-
-    private List<CommonWord> sortListToWordIndex(List<CommonWord> commonWords, String snippet) {
-        List<CommonWord> commonWordList = new ArrayList<>();
-        for(CommonWord commonWord : commonWords) {
-            String regex = "[^a-zа-я]" + commonWord.getWord() + "[^a-zа-я]";
-            if(Pattern.compile(regex).matcher(snippet).find()) {
-                commonWord.setIndex(snippet.indexOf(commonWord.getWord()));
-                commonWordList.add(commonWord);
-            }
-        }
-        Comparator<CommonWord> commonWordComparator = Comparator.comparingInt(CommonWord::getIndex);
-        return commonWordList.stream().sorted(commonWordComparator).collect(Collectors.toList());
     }
 
     private String checkOnSnippetLength(String snippet, List<CommonWord> commonWords, String content, int querySize) {
@@ -76,18 +64,19 @@ public class SnippetCreation
         int snippetHalf = checkSnippetSizeForCorrectDivision(snippet, sortedList);
         String firstSnippetHalf = snippet.substring(0, snippetHalf);
         String secondSnippetHalf = snippet.substring(snippetHalf);
-        List<String> wordsInFirstHalf = new ArrayList<>();
-        List<CommonWord> wordsInSecondHalf = new ArrayList<>(sortedList);
+        List<CommonWord> wordsInFirstHalf = new ArrayList<>();
+        List<CommonWord> wordsInSecondHalf = new ArrayList<>();
+        List<String> filteredWordList = new ArrayList<>();
 
-        filterCommonWords(wordsInFirstHalf, wordsInSecondHalf, sortedList, firstSnippetHalf);
+        filterCommonWordsInHalf(wordsInFirstHalf, sortedList, firstSnippetHalf, filteredWordList);
+        filterCommonWordsInHalf(wordsInSecondHalf, sortedList, secondSnippetHalf, filteredWordList);
 
         String totalSnippet = snippet;
-        if(querySize > 1) {
+        if (querySize > 1) {
             String finalFirstHalfVersion = firstSnippetHalf;
             if (firstSnippetHalf.length() > 140) {
                 finalFirstHalfVersion = editFirstSnippetHalf(wordsInFirstHalf, firstSnippetHalf);
             }
-
             String finalSecondHalfVersion = secondSnippetHalf;
             if (secondSnippetHalf.length() > 140) {
                 finalSecondHalfVersion = "";
@@ -100,15 +89,51 @@ public class SnippetCreation
         return addSnippetSizeToLimit(totalSnippet, sortedList, content);
     }
 
+    private void filterCommonWordsInHalf(List<CommonWord> wordsInHalf,
+                                         List<CommonWord> sortedList,
+                                         String snippetHalf,
+                                         List<String> filteredWordList) {
+        for (CommonWord commonWord : sortedList) {
+            String word = commonWord.getWord();
+            String lemma = commonWord.getLemma();
+            String regex = "[^a-zа-я]" + word + "[^a-zа-я]";
+            Matcher matcher = Pattern.compile(regex).matcher(snippetHalf);
+            CommonWord cw = new CommonWord();
+            cw.setWord(word);
+            cw.setLemma(lemma);
+            if (matcher.find() && !filteredWordList.contains(lemma)) {
+                int index = snippetHalf.substring(matcher.start(), matcher.end()).indexOf(word);
+                cw.setIndex(matcher.start() + index);
+                cw.setLength(word.length());
+                wordsInHalf.add(cw);
+                filteredWordList.add(lemma);
+            }
+        }
+    }
+
+    private List<CommonWord> sortListToWordIndex(List<CommonWord> commonWords, String snippet) {
+        List<CommonWord> commonWordList = new ArrayList<>();
+        for (CommonWord commonWord : commonWords) {
+            String regex = "[^a-zа-я]" + commonWord.getWord() + "[^a-zа-я]";
+            Matcher matcher = Pattern.compile(regex).matcher(snippet);
+            if (matcher.find()) {
+                commonWord.setIndex(matcher.start());
+                commonWordList.add(commonWord);
+            }
+        }
+        Comparator<CommonWord> commonWordComparator = Comparator.comparingInt(CommonWord::getIndex);
+        return commonWordList.stream().sorted(commonWordComparator).collect(Collectors.toList());
+    }
+
     private int checkSnippetSizeForCorrectDivision(String snippet, List<CommonWord> sortedList) {
         int snippetHalf = snippet.length() / 2;
         int wordIndex = 0;
         String word = "";
 
-        for(CommonWord commonWord : sortedList) {
-            if(commonWord.getIndex() > snippetHalf) continue;
+        for (CommonWord commonWord : sortedList) {
+            if (commonWord.getIndex() > snippetHalf) continue;
 
-            if(commonWord.getIndex() > wordIndex) {
+            if (commonWord.getIndex() > wordIndex) {
                 wordIndex = commonWord.getIndex();
                 word = commonWord.getWord();
             }
@@ -118,90 +143,87 @@ public class SnippetCreation
         return isWordInSnippetFirstHalf ? snippetHalf : snippetHalf - (snippetHalf - wordIndex);
     }
 
-    private void filterCommonWords(List<String> wordsInFirstHalf, List<CommonWord> wordsInSecondHalf,
-                                   List<CommonWord> sortedList, String firstHalf) {
-        List<String> lemmaWords = new ArrayList<>();
-        for (CommonWord commonWord : sortedList) {
-            String word = commonWord.getWord();
-            List<String> wordBaseForms = lemmaConverter.returnWordIntoBaseForm(word);
-            if (!wordBaseForms.isEmpty()) {
-                String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
-                if (firstHalf.contains(word)) {
-                    if (!lemmaWords.contains(resultWordForm)) lemmaWords.add(resultWordForm);
-                    wordsInSecondHalf.remove(commonWord);
-                    wordsInFirstHalf.add(word);
-
-                } else {
-                    if (lemmaWords.stream().anyMatch(w -> w.equals(resultWordForm)))
-                        wordsInSecondHalf.remove(commonWord);
-                }
-            }
-        }
-    }
-
-    private String editFirstSnippetHalf(List<String> wordsInFirstHalf, String firstSnippetHalf) {
+    private String editFirstSnippetHalf(List<CommonWord> wordsInFirstHalf, String firstSnippetHalf) {
         StringBuilder snippetFragments = new StringBuilder();
         for (int i = 0; i < wordsInFirstHalf.size(); i++) {
-            int firstWordIndex = firstSnippetHalf.indexOf(wordsInFirstHalf.get(i));
+            int firstWordIndex = wordsInFirstHalf.get(i).getIndex();
+            int lastIndexOfWord = firstWordIndex + wordsInFirstHalf.get(i).getLength();
             int secondWordIndex;
-
-            int lastIndexOfWord = firstWordIndex + wordsInFirstHalf.get(i).length();
             if (i != wordsInFirstHalf.size() - 1) {
-                secondWordIndex = firstSnippetHalf.indexOf(wordsInFirstHalf.get(i + 1));
+                secondWordIndex = wordsInFirstHalf.get(i + 1).getIndex();
             } else {
-                int indexOfLastDots = firstSnippetHalf.substring(0, firstWordIndex).lastIndexOf("...");
-                int indexOfLastSpace = firstSnippetHalf.substring(indexOfLastDots, firstWordIndex - 1).lastIndexOf(" ");
-                int indexOfOneWordBeforeQueryWord = indexOfLastDots + indexOfLastSpace;
-
-                snippetFragments.append(firstSnippetHalf, indexOfOneWordBeforeQueryWord, lastIndexOfWord);
+                int indexOfLastSpace = firstSnippetHalf.substring(0, firstWordIndex).lastIndexOf(" ");
+                if(indexOfLastSpace == -1) {
+                    indexOfLastSpace = firstWordIndex - 1;
+                }
+                snippetFragments.append(firstSnippetHalf, indexOfLastSpace + 1, lastIndexOfWord);
                 break;
             }
-
             int diffBetweenFirstAndSecondWord = secondWordIndex - lastIndexOfWord;
-            if (diffBetweenFirstAndSecondWord <= 10) {
+            if (diffBetweenFirstAndSecondWord <= 15) {
                 snippetFragments.append(firstSnippetHalf, firstWordIndex, secondWordIndex);
+                snippetFragments.insert(snippetFragments.indexOf(wordsInFirstHalf.get(i).getWord())  + wordsInFirstHalf.get(i).getLength(), " ");
             } else {
-                snippetFragments.append(firstSnippetHalf, firstWordIndex, secondWordIndex + wordsInFirstHalf.get(i + 1).length());
-                int newIndex = snippetFragments.indexOf(wordsInFirstHalf.get(i));
-                int lastNewIndex = newIndex + wordsInFirstHalf.get(i).length();
-                int newSecondIndex = snippetFragments.indexOf(wordsInFirstHalf.get(i + 1)) + wordsInFirstHalf.get(i + 1).length();
-                snippetFragments.replace(lastNewIndex + (diffBetweenFirstAndSecondWord / 2), newSecondIndex, "...");
+                int firstWordLen = wordsInFirstHalf.get(i).getLength();
+                int secondWordLen = wordsInFirstHalf.get(i + 1).getLength();
+                int division = diffBetweenFirstAndSecondWord / 2;
+
+                String edit = firstSnippetHalf.substring(firstWordIndex, secondWordIndex + secondWordLen);
+                int start = edit.indexOf(wordsInFirstHalf.get(i).getWord()) + firstWordLen + division;
+                int end = edit.lastIndexOf(wordsInFirstHalf.get(i + 1).getWord()) + secondWordLen;
+
+                String checkForCorrectDivision = edit.substring(0, start + 1);
+                int lastSpace = checkForCorrectDivision.lastIndexOf(" ");
+                if(lastSpace == -1) {
+                    lastSpace = edit.indexOf(wordsInFirstHalf.get(i).getWord()) + firstWordLen;
+                }
+                String fix = new StringBuilder(edit).replace(lastSpace, end, "").toString();
+                if (fix.endsWith(" ")) fix = fix.substring(0, fix.length() - 1);
+                snippetFragments.append(fix).append("... ");
             }
         }
-        int indexFirstWord = firstSnippetHalf.indexOf(wordsInFirstHalf.stream().findFirst().orElseThrow());
+
+        int indexFirstWord = wordsInFirstHalf.stream().findFirst().orElseThrow().getIndex();
         return firstSnippetHalf.substring(0, indexFirstWord).concat(snippetFragments.toString());
     }
 
-    private String editSecondSnippetHalf(List<CommonWord> wordsInSecondHalf, String secondSnippetHalf)
-    {
+    private String editSecondSnippetHalf(List<CommonWord> wordsInSecondHalf, String secondSnippetHalf) {
         StringBuilder snippetFragments = new StringBuilder();
         for (int i = 0; i < wordsInSecondHalf.size(); i++) {
-            int firstWordIndex = secondSnippetHalf.indexOf(wordsInSecondHalf.get(i).getWord());
+            int firstWordIndex = wordsInSecondHalf.get(i).getIndex();
+            int lastIndexOfWord = firstWordIndex + wordsInSecondHalf.get(i).getLength();
             int secondWordIndex;
-
-            int lastIndexOfWord = firstWordIndex + wordsInSecondHalf.get(i).getWord().length();
             if (i != wordsInSecondHalf.size() - 1) {
-                secondWordIndex = secondSnippetHalf.indexOf(wordsInSecondHalf.get(i + 1).getWord());
+                secondWordIndex = wordsInSecondHalf.get(i + 1).getIndex();
             } else {
-                int indexOfLastDots = secondSnippetHalf.substring(0, firstWordIndex).lastIndexOf("...");
-                int indexOfLastSpace = secondSnippetHalf.substring(indexOfLastDots, firstWordIndex - 1).lastIndexOf(" ");
-                int start = indexOfLastDots + indexOfLastSpace;
-
-                String oneWordBeforeQueryWord = secondSnippetHalf.substring(start, firstWordIndex).trim();
-                int indexOfOneWordBeforeQueryWord = secondSnippetHalf.indexOf(oneWordBeforeQueryWord);
-                snippetFragments.append(secondSnippetHalf, indexOfOneWordBeforeQueryWord, lastIndexOfWord);
+                int indexOfLastSpace = secondSnippetHalf.substring(0, firstWordIndex).lastIndexOf(" ");
+                if(indexOfLastSpace == -1) {
+                    indexOfLastSpace = firstWordIndex - 1;
+                }
+                snippetFragments.append(secondSnippetHalf, indexOfLastSpace + 1, lastIndexOfWord);
                 break;
             }
 
             int diffBetweenFirstAndSecondWord = secondWordIndex - lastIndexOfWord;
-            if (diffBetweenFirstAndSecondWord <= 10) {
+            if (diffBetweenFirstAndSecondWord <= 15) {
                 snippetFragments.append(secondSnippetHalf, firstWordIndex, secondWordIndex);
+                snippetFragments.insert(snippetFragments.indexOf(wordsInSecondHalf.get(i).getWord()) + wordsInSecondHalf.get(i).getLength() , " ");
             } else {
-                snippetFragments.append(secondSnippetHalf, firstWordIndex, secondWordIndex + wordsInSecondHalf.get(i + 1).getWord().length());
-                int newIndex = snippetFragments.indexOf(wordsInSecondHalf.get(i).getWord());
-                int lastNewIndex = newIndex + wordsInSecondHalf.get(i).getWord().length();
-                int newSecondIndex = snippetFragments.indexOf(wordsInSecondHalf.get(i + 1).getWord()) + wordsInSecondHalf.get(i + 1).getWord().length();
-                snippetFragments.replace(lastNewIndex + (diffBetweenFirstAndSecondWord / 2), newSecondIndex, "...");
+                int firstWordLen = wordsInSecondHalf.get(i).getLength();
+                int secondWordLen = wordsInSecondHalf.get(i + 1).getLength();
+                int division = diffBetweenFirstAndSecondWord / 2;
+                String edit = secondSnippetHalf.substring(firstWordIndex, secondWordIndex + secondWordLen);
+                int start = edit.indexOf(wordsInSecondHalf.get(i).getWord()) + firstWordLen + division;
+                int end = edit.lastIndexOf(wordsInSecondHalf.get(i + 1).getWord()) + secondWordLen;
+
+                String checkForCorrectDivision = edit.substring(0, start + 1);
+                int lastSpace = checkForCorrectDivision.lastIndexOf(" ");
+                if(lastSpace == -1) {
+                    lastSpace = edit.indexOf(wordsInSecondHalf.get(i).getWord()) + firstWordLen;
+                }
+                String fix = new StringBuilder(edit).replace(lastSpace, end, "").toString();
+                if (fix.endsWith(" ")) fix = fix.substring(0, fix.length() - 1);
+                snippetFragments.append(fix).append("... ");
             }
         }
 
@@ -211,15 +233,18 @@ public class SnippetCreation
     private String addSnippetSizeToLimit(String snippet, List<CommonWord> sortedList, String content) {
         content = content.toLowerCase();
         StringBuilder builder = new StringBuilder(snippet);
-        if(snippet.length() <= SNIPPET_MAX_SIZE) {
+        if (snippet.length() <= SNIPPET_MAX_SIZE && !snippet.isEmpty()) {
             int lastDots = snippet.lastIndexOf("...");
             String lastFragment = snippet.substring(lastDots + 3);
             int lastSnippetIndexInContent = content.lastIndexOf(lastFragment);
-            int extraIndexAmount = (lastSnippetIndexInContent  +
-                    lastFragment.length()) + (SNIPPET_MAX_SIZE - snippet.length());
-            String finalVersion = content.substring(lastSnippetIndexInContent +
-                    lastFragment.length(), extraIndexAmount);
-            snippet = builder.append(finalVersion).toString();
+            int fragmentStartPoint = lastSnippetIndexInContent + lastFragment.length();
+            int fragmentEndPoint = fragmentStartPoint + (SNIPPET_MAX_SIZE - snippet.length());
+            if (fragmentEndPoint > content.length()) {
+                snippet = getMoreWordsToAchieveLimitSize(builder, content, fragmentStartPoint);
+            } else {
+                String finalVersion = content.substring(fragmentStartPoint, fragmentEndPoint);
+                snippet = builder.append(" ").append(finalVersion).toString();
+            }
         }
 
         if (snippet.length() > SNIPPET_MAX_SIZE) {
@@ -229,17 +254,33 @@ public class SnippetCreation
         return addTagsToWordInSnippet(snippet, sortedList);
     }
 
+    private String getMoreWordsToAchieveLimitSize(StringBuilder builder, String content, int start) {
+        int availableChars = content.length() - start;
+        int extra = (SNIPPET_MAX_SIZE - builder.length()) - availableChars;
+
+        String finalVersion = content.substring(start, start + availableChars);
+        builder.append(finalVersion).append("...");
+
+        String remainder = content.substring(0, extra);
+        builder.append(remainder);
+        return builder.toString();
+    }
+
     private String addTagsToWordInSnippet(String snippet, List<CommonWord> commonWords) {
         String finalSnippet = snippet;
-        Comparator<CommonWord> commonWordComparator = Comparator.comparingInt(CommonWord::getLength);
-        Set<CommonWord> finalCommonWordSet = commonWords.stream().sorted(commonWordComparator.reversed()).collect(Collectors.toCollection(LinkedHashSet::new));
 
-        for(CommonWord commonWord : finalCommonWordSet) {
-            String word = commonWord.getWord();
-            String regex = "[^a-zа-я]" + commonWord.getWord() + "[^a-zа-я]";
-            finalSnippet = finalSnippet.replaceAll(regex, " <b>" + word + "</b> ");
+        if(!finalSnippet.isEmpty()) {
+            Comparator<CommonWord> commonWordComparator = Comparator.comparingInt(CommonWord::getLength);
+            Set<CommonWord> finalCommonWordSet = commonWords.stream().sorted(commonWordComparator.reversed()).collect(Collectors.toCollection(LinkedHashSet::new));
+            for (CommonWord commonWord : finalCommonWordSet) {
+                String word = commonWord.getWord();
+                String regex = "[^a-zа-я]" + commonWord.getWord() + "[^a-zа-я]";
+                finalSnippet = finalSnippet.replaceAll(regex, " <b>" + word + "</b> ");
+            }
+
+            int space = finalSnippet.lastIndexOf(" ");
+            finalSnippet = finalSnippet.substring(0, space);
         }
-
-        return finalSnippet.concat("...");
+        return finalSnippet.endsWith("...") ? finalSnippet : finalSnippet.concat("...");
     }
 }

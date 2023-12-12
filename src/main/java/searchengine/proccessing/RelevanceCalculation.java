@@ -3,12 +3,13 @@ package searchengine.proccessing;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import searchengine.dto.search.PageRelevance;
 import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
 import searchengine.repository.IndexRepository;
 
-import java.util.Set;
+import java.util.*;
 
 @Component
 @RequiredArgsConstructor
@@ -17,28 +18,38 @@ public class RelevanceCalculation
     @Autowired
     private final IndexRepository indexRepository;
 
-    public float calculatePageRelevance(PageEntity pageEntity, float maxAbsoluteRelevance, Set<LemmaEntity> lemmas) {
-        float rank = getRankSumForPage(lemmas, pageEntity);
-        return rank / maxAbsoluteRelevance;
+    public List<PageRelevance> searchForAllLemmaIndexes(Set<LemmaEntity> lemmas, Set<PageEntity> pages) {
+        List<IndexEntity> ranks = new ArrayList<>();
+        for(LemmaEntity lemma : lemmas) {
+            List<IndexEntity> indexes = indexRepository.findPageRelevance(lemma.getSite(), lemma);
+            ranks.addAll(indexes);
+        }
+        Comparator<IndexEntity> c = Comparator.comparingInt(i -> i.getPage().getId());
+        ranks.sort(c);
+        return calculateRelevance(pages, ranks);
     }
 
-    public float getMaxPageRelevance(Set<PageEntity> pageEntities, Set<LemmaEntity> lemmas) {
-        float max = 0;
+    private List<PageRelevance> calculateRelevance(Set<PageEntity> pageEntities, List<IndexEntity> ranks) {
+        float max = 1;
+        List<PageRelevance> pageRelevanceList = new ArrayList<>();
         for (PageEntity pageEntity : pageEntities) {
-            float totalRank = getRankSumForPage(lemmas, pageEntity);
-            if (max < totalRank) {
-                max = totalRank;
+            float sum = 0;
+            PageRelevance pageRelevance = new PageRelevance();
+            for(IndexEntity indexEntity : ranks) {
+                if(pageEntity.getId() == indexEntity.getPage().getId()) {
+                    sum += indexEntity.getRank();
+                }
+            }
+
+            pageRelevance.setPageEntity(pageEntity);
+            pageRelevance.setAbsoluteRank(sum);
+            pageRelevanceList.add(pageRelevance);
+
+            if(max < sum) {
+                max = sum;
             }
         }
-        return max;
-    }
-
-    private float getRankSumForPage(Set<LemmaEntity> lemmas, PageEntity pageEntity) {
-        float rank = 0;
-        for (LemmaEntity lemmaEntity : lemmas) {
-            IndexEntity indexEntity = indexRepository.findByLemmaIdAndPageId(lemmaEntity.getId(), pageEntity.getId());
-            rank += indexEntity.getRank();
-        }
-        return rank;
+        pageRelevanceList.get(0).setMaxRank(max);
+        return pageRelevanceList;
     }
 }

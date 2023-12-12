@@ -38,4 +38,7 @@ public interface SiteRepository extends JpaRepository<SiteEntity, Integer>
 
     @Transactional
     boolean existsByUrl(String url);
+
+    @Transactional
+    boolean existsById(int id);
 }

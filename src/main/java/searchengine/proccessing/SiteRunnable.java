@@ -26,20 +26,21 @@ public class SiteRunnable implements Runnable {
     private final IndexRepository indexRepository;
     private final LemmaConverter lemmaConverter;
     private final SitesList sites;
+    public static ForkJoinPool fjp;
 
     @Override
     public void run() {
         SiteEntity site = siteRepository.findByUrl(siteUrl.getUrl());
         String siteUrl = IndexationServiceImpl.editSiteUrl(site.getUrl());
-        ForkJoinPool forkJoinPool = new ForkJoinPool();
-        forkJoinPool.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, lemmaConverter,
+        fjp = new ForkJoinPool();
+        fjp.invoke(new LinkFinder(sites, siteUrl.concat("/"), site, lemmaConverter,
                 siteRepository, pageRepository, lemmaRepository, indexRepository));
-        if (!isIndexationRunning) {
-            forkJoinPool.shutdownNow();
-        } else {
+        if(isIndexationRunning) {
             siteRepository.updateOnIndexed(site.getId(), StatusType.INDEXED);
             siteRepository.updateStatusTime(site.getId());
             log.info("</Сайт " + site.getName() + " сохранен/>");
+        } else {
+            fjp.shutdownNow();
         }
     }
 }

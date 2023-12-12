@@ -1,12 +1,10 @@
 package searchengine.services.search;
 
-import searchengine.dto.response.ApiResponse;
-
-import java.io.IOException;
+import searchengine.dto.response.ApiResponses;
 
 public interface SearchService
 {
-    ApiResponse searchForOneSite(String query, String site);
+    ApiResponses searchForOneSite(String query, String site);
 
-    ApiResponse searchForAllSites(String query);
+    ApiResponses searchForAllSites(String query);
 }

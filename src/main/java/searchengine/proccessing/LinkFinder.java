@@ -23,13 +23,14 @@ import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.RecursiveAction;
 
 import static searchengine.services.indexation.IndexationServiceImpl.isIndexationRunning;
+import static searchengine.services.indexation.IndexationServiceImpl.isItNewIndexationStart;
 
 @Slf4j
 @RequiredArgsConstructor
 public class LinkFinder extends RecursiveAction {
     private final SitesList sites;
     private final String url;
-    private static volatile List<String> urlList = new ArrayList<>();
+    public static volatile List<String> urlList = new ArrayList<>();
     private final SiteEntity siteEntity;
     private final LemmaConverter lemmaConverter;
 
@@ -56,7 +57,7 @@ public class LinkFinder extends RecursiveAction {
             int statusCode = response.statusCode();
             String finalUrlVersion = lemmaConverter.editSiteURL(siteEntity.getUrl());
             saveLinkComponentsIntoDB(url.replace(finalUrlVersion, ""), content, statusCode);
-            parseUrl(document);
+            if (siteRepository.existsById(siteEntity.getId())) parseUrl(document);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -64,7 +65,7 @@ public class LinkFinder extends RecursiveAction {
 
     private void saveLinkComponentsIntoDB(String link, String content, int statusCode) {
         synchronized (siteEntity) {
-            if (isIndexationRunning) {
+            if (isIndexationRunning && siteRepository.existsById(siteEntity.getId())) {
                 PageEntity pageEntity = new PageEntity();
                 pageEntity.setSite(siteEntity);
                 pageEntity.setPath(link);
@@ -77,34 +78,45 @@ public class LinkFinder extends RecursiveAction {
         }
     }
 
-    private void parseUrlContent(String content, PageEntity pageEntity) {
+    public void parseUrlContent(String content, PageEntity pageEntity) {
         Set<String> uniqueLemmas = new HashSet<>();
-        String[] words = lemmaConverter.splitContentIntoWords(Jsoup.parse(content).text());
+        String finalContent = Jsoup.parse(content).text();
+        String[] words = lemmaConverter.splitContentIntoWords(finalContent);
         for (String word : words) {
             List<String> wordBaseForms = lemmaConverter.returnWordIntoBaseForm(word);
             if (!wordBaseForms.isEmpty()) {
                 String resultWordForm = wordBaseForms.get(wordBaseForms.size() - 1);
-                saveLemmaDataIntoDB(uniqueLemmas, resultWordForm, pageEntity);
+                int siteId = pageEntity.getSite().getId();
+                if (lemmaRepository.existsByLemmaAndSiteId(resultWordForm, siteId)) {
+                    updateDataIntoDB(pageEntity, resultWordForm, uniqueLemmas);
+                } else if (!uniqueLemmas.contains(resultWordForm)) {
+                    saveNewDataIntoDB(pageEntity, resultWordForm, uniqueLemmas);
+                }
             }
         }
     }
 
-    private void saveLemmaDataIntoDB(Set<String> uniqueLemmas, String resultWordForm, PageEntity pageEntity) {
-        if (lemmaRepository.existsByLemmaAndSiteId(resultWordForm, pageEntity.getSite().getId())) {
-            LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, pageEntity.getSite());
+    private void updateDataIntoDB(PageEntity pageEntity, String resultWordForm, Set<String> uniqueLemmas) {
+        LemmaEntity lemmaEntity = lemmaRepository.getLemmaEntity(resultWordForm, pageEntity.getSite());
+        if (!isItNewIndexationStart && siteRepository.existsById(pageEntity.getSite().getId())) {
             if (!uniqueLemmas.contains(resultWordForm)) {
                 lemmaRepository.updateFrequency(lemmaEntity.getId(), lemmaEntity.getFrequency() + 1);
                 uniqueLemmas.add(resultWordForm);
-                indexLemma(pageEntity, lemmaEntity);
             }
-        } else if (!uniqueLemmas.contains(resultWordForm)) {
-            LemmaEntity lemmaEntity = new LemmaEntity();
-            lemmaEntity.setLemma(resultWordForm);
-            lemmaEntity.setFrequency(1);
-            lemmaEntity.setSite(pageEntity.getSite());
-            lemmaRepository.saveAndFlush(lemmaEntity);
-            uniqueLemmas.add(resultWordForm);
             indexLemma(pageEntity, lemmaEntity);
+        }
+    }
+
+    private void saveNewDataIntoDB(PageEntity pageEntity, String resultWordForm, Set<String> uniqueLemmas) {
+        LemmaEntity lemmaEntity = new LemmaEntity();
+        lemmaEntity.setLemma(resultWordForm);
+        lemmaEntity.setFrequency(1);
+        lemmaEntity.setSite(pageEntity.getSite());
+        if (!isItNewIndexationStart && siteRepository.existsById(pageEntity.getSite().getId())) {
+            lemmaRepository.saveAndFlush(lemmaEntity);
+            log.info("Новая лемма '" + lemmaEntity.getLemma() + "' была добавлена");
+            indexLemma(pageEntity, lemmaEntity);
+            uniqueLemmas.add(resultWordForm);
         }
     }
 
@@ -117,9 +129,10 @@ public class LinkFinder extends RecursiveAction {
             indexEntity.setRank(1);
             indexEntity.setLemma(lemmaEntity);
             indexEntity.setPage(pageEntity);
-            indexRepository.saveAndFlush(indexEntity);
+            indexRepository.save(indexEntity);
         }
     }
+
 
     private void parseUrl(Document document) {
         Elements elements = document.select("body").select("a");

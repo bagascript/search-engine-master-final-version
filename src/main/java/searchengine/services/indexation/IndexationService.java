@@ -1,12 +1,12 @@
 package searchengine.services.indexation;
 
-import searchengine.dto.response.ApiResponse;
+import searchengine.dto.response.ApiResponses;
 
 public interface IndexationService
 {
-    ApiResponse startIndexingApiResponse();
+    ApiResponses startIndexingApiResponse();
 
-    ApiResponse stopIndexingApiResponse();
+    ApiResponses stopIndexingApiResponse();
 
-    ApiResponse indexPageApiResponse(String url);
+    ApiResponses indexPageApiResponse(String url);
 }

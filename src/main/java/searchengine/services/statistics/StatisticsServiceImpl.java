@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
-import searchengine.dto.response.ApiResponse;
+import searchengine.dto.response.ApiResponses;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.TotalStatistics;
@@ -37,13 +37,13 @@ public class StatisticsServiceImpl implements StatisticsService {
     private List<DetailedStatisticsItem> statisticsItemList = new ArrayList<>();
 
     @Override
-    public ApiResponse getStatistics() {
+    public ApiResponses getStatistics() {
         getTotalAndDetailedStatistics();
-        ApiResponse apiResponse = new ApiResponse();
+        ApiResponses apiResponses = new ApiResponses();
         StatisticsData statisticsData = getStatisticsData();
-        apiResponse.setStatistics(statisticsData);
-        apiResponse.setResult(true);
-        return apiResponse;
+        apiResponses.setStatistics(statisticsData);
+        apiResponses.setResult(true);
+        return apiResponses;
     }
 
     private void getTotalAndDetailedStatistics() {
