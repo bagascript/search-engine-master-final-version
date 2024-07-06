@@ -91,6 +91,7 @@ public class SearchServiceImpl implements SearchService {
         return totalApiResponses;
     }
 
+    //TODO: Оптимизировать код в плане уменьшить кол-во запросов в БД ибо тормозит программа!!!!
     private ApiResponses getFoundResultsResponse(String query, SiteEntity siteEntity) {
         ApiResponses apiResponses;
         List<DataProperties> dataPropertiesList;
